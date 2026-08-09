@@ -4,7 +4,7 @@
 
 LibraryForge is a self-hosted media metadata and library management platform.
 
-Website: https://libraryforge.media
+Website: coming soon
 
 ## Goals
 
@@ -63,4 +63,4 @@ LibraryForge can:
 
 ## Website
 
-https://libraryforge.media
+coming soon
