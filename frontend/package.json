@@ -1,13 +1,17 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predev": "python ../scripts/version.py prepare-frontend",
+    "prebuild": "python ../scripts/version.py prepare-frontend",
+    "version:show": "python ../scripts/version.py show",
+    "version:check": "python ../scripts/version.py check"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

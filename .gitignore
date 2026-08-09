@@ -28,3 +28,6 @@ Thumbs.db
 # Runtime / test media
 data/
 test-media/
+
+# Generated LibraryForge build metadata
+/frontend/public/build-info.json

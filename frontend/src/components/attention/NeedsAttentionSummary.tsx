@@ -12,10 +12,6 @@ import {
 } from "lucide-react"
 
 import {
-  Button,
-} from "@/components/ui/button"
-
-import {
   Card,
   CardContent,
   CardDescription,
@@ -163,18 +159,29 @@ export function NeedsAttentionSummary({
             </CardDescription>
           </div>
 
-          <Button
-            asChild
-            variant="outline"
+          <Link
+            to={
+              `/libraries/${library.id}/attention`
+            }
+            className="
+              inline-flex
+              h-9
+              items-center
+              justify-center
+              rounded-md
+              border
+              bg-background
+              px-4
+              text-sm
+              font-medium
+              shadow-sm
+              transition-colors
+              hover:bg-accent
+              hover:text-accent-foreground
+            "
           >
-            <Link
-              to={
-                `/libraries/${library.id}/attention`
-              }
-            >
-              Review
-            </Link>
-          </Button>
+            Review
+          </Link>
         </div>
       </CardHeader>
 

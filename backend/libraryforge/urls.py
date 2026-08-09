@@ -20,6 +20,10 @@ from catalog.views import (
 from jobs.views import ScanJobViewSet
 from libraries.views import LibraryViewSet
 
+from libraryforge.system_views import (
+    system_version,
+)
+
 from media.browser_views import (
     LibraryBrowserViewSet,
 )
@@ -145,6 +149,12 @@ urlpatterns = [
         include(
             "accounts.urls"
         ),
+    ),
+
+    path(
+        "api/system/version/",
+        system_version,
+        name="system-version",
     ),
 
     path(

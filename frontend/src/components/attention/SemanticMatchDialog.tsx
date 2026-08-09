@@ -236,6 +236,8 @@ export function SemanticMatchDialog({
     return null
   }
 
+  const matchId =
+  match.id
 
   async function run(
     operation:
@@ -273,7 +275,7 @@ export function SemanticMatchDialog({
     return run(
       () =>
         resolveSemanticMatch(
-          match.id,
+            matchId,
           {
             candidate_source:
               source,
@@ -299,7 +301,7 @@ export function SemanticMatchDialog({
     await run(
       () =>
         resolveSemanticMatch(
-          match.id,
+          matchId,
           input,
         )
     )

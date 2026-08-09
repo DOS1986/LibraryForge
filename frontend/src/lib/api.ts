@@ -23,6 +23,7 @@ import type {
   SemanticResetResult,
   SemanticResolveInput,
   StorageTestResult,
+  SystemVersionInfo,
   User,
 } from "@/types"
 
@@ -1058,3 +1059,13 @@ export async function runProjection(
     },
   )
 }
+
+
+export async function getSystemVersion() {
+  return request<
+    SystemVersionInfo
+  >(
+    "/api/system/version/",
+  )
+}
+

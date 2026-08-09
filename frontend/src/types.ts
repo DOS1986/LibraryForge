@@ -545,3 +545,24 @@ export interface ProjectionRunResult {
     error: string
   }>
 }
+
+
+export interface SystemVersionInfo {
+  name: string
+  version: string
+  channel:
+    | "development"
+    | "stable"
+  environment: string
+  backend_package_version: string | null
+  backend_version_consistent: boolean
+  git_sha: string | null
+  git_short_sha: string | null
+  git_branch: string | null
+  git_dirty: boolean | null
+  build_time: string | null
+  runtime_started_at: string
+  python_version: string
+  django_version: string
+}
+

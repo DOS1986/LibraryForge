@@ -26,6 +26,10 @@ import {
 } from "@/components/ui/separator"
 
 import {
+  BuildVersionCard,
+} from "@/components/app/BuildVersionCard"
+
+import {
   CreateLibraryCard,
 } from "@/components/libraries/CreateLibraryCard"
 
@@ -444,6 +448,8 @@ export function AppShell({
               handleCreated
             }
           />
+
+          <BuildVersionCard />
         </aside>
 
         <section>
