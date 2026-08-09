@@ -1,0 +1,32 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "DOS1986", email = "dos1986@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "django>=6.0,<6.1",
+    "django-environ>=0.12,<1",
+    "django-filter>=25,<26",
+    "djangorestframework>=3.16,<4",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[project.scripts]
+backend = "backend:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-django>=4.13.0",
+    "ruff>=0.16.2",
+]

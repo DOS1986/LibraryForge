@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.local
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/htmlcov/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/*.log
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Runtime / test media
+data/
+test-media/
