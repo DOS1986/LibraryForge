@@ -30,3 +30,13 @@ dev = [
     "pytest-django>=4.13.0",
     "ruff>=0.16.2",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "libraryforge.settings"
+addopts = "--ds=libraryforge.settings"
+pythonpath = ["."]
+python_files = [
+    "tests.py",
+    "test_*.py",
+    "*_tests.py",
+]

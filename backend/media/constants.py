@@ -1,0 +1,20 @@
+VIDEO_EXTENSIONS = frozenset(
+    {
+        ".3gp",
+        ".avi",
+        ".flv",
+        ".m2ts",
+        ".m4v",
+        ".mkv",
+        ".mov",
+        ".mp4",
+        ".mpeg",
+        ".mpg",
+        ".mts",
+        ".ogv",
+        ".ts",
+        ".vob",
+        ".webm",
+        ".wmv",
+    }
+)

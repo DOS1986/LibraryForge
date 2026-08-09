@@ -13,6 +13,19 @@ env = environ.Env(
 
 environ.Env.read_env(ROOT_DIR / ".env")
 
+FFPROBE_PATH = env(
+    "FFPROBE_PATH",
+    default="ffprobe",
+)
+
+
+CSRF_TRUSTED_ORIGINS = env.list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+)
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 
@@ -42,6 +55,7 @@ INSTALLED_APPS = [
     "libraries",
     "media",
     "metadata",
+    "catalog",
     "outputs",
     "operations",
     "jobs",
@@ -144,6 +158,12 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
     ],
+
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+    ),
+
+    "PAGE_SIZE": 100,
 }
 
 
