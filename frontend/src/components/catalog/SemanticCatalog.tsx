@@ -19,18 +19,6 @@ import {
 } from "@/components/ui/button"
 
 import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-
-import {
-  Dialog,
-  DialogTitle,
-} from "@/components/ui/dialog"
-
-import {
   Input,
 } from "@/components/ui/input"
 
@@ -42,14 +30,8 @@ import {
 } from "@/components/ui/tabs"
 
 import {
-  ScrollableDialogBody,
-  ScrollableDialogContent,
-  ScrollableDialogHeader,
-} from "@/components/dialogs/ScrollableDialog"
-
-import {
-  MediaDetailDialog,
-} from "@/components/media/MediaDetailDialog"
+  CatalogItemEditorDialog,
+} from "@/components/catalog/CatalogItemEditorDialog"
 
 import {
   TablePagination,
@@ -69,6 +51,7 @@ import {
 } from "@/lib/format"
 
 import type {
+  CatalogEditorKind,
   CatalogEpisode,
   CatalogMovie,
   CatalogSeason,
@@ -97,9 +80,7 @@ function SortButton({
   return (
     <button
       type="button"
-      onClick={
-        onClick
-      }
+      onClick={onClick}
       className="
         inline-flex
         items-center
@@ -113,27 +94,18 @@ function SortButton({
         !active
           ? (
             <ArrowUpDown
-              className="
-                h-3.5
-                w-3.5
-              "
+              className="h-3.5 w-3.5"
             />
           )
           : descending
             ? (
               <ArrowDown
-                className="
-                  h-3.5
-                  w-3.5
-                "
+                className="h-3.5 w-3.5"
               />
             )
             : (
               <ArrowUp
-                className="
-                  h-3.5
-                  w-3.5
-                "
+                className="h-3.5 w-3.5"
               />
             )
       }
@@ -152,9 +124,7 @@ function MovieCatalog({
   const [
     movies,
     setMovies,
-  ] = useState<
-    CatalogMovie[]
-  >([])
+  ] = useState<CatalogMovie[]>([])
 
   const [
     count,
@@ -169,9 +139,7 @@ function MovieCatalog({
   const [
     pageSize,
     setPageSize,
-  ] = useState<
-    PageSize
-  >(20)
+  ] = useState<PageSize>(20)
 
   const [
     totalPages,
@@ -189,11 +157,9 @@ function MovieCatalog({
   ] = useState(false)
 
   const [
-    selectedMovie,
-    setSelectedMovie,
-  ] = useState<
-    CatalogMovie | null
-  >(null)
+    editorId,
+    setEditorId,
+  ] = useState<string | null>(null)
 
 
   const load =
@@ -210,14 +176,8 @@ function MovieCatalog({
             pageSize,
           )
 
-        setMovies(
-          result.results
-        )
-
-        setCount(
-          result.count
-        )
-
+        setMovies(result.results)
+        setCount(result.count)
         setTotalPages(
           result.total_pages
         )
@@ -237,31 +197,22 @@ function MovieCatalog({
     () => {
       void load()
     },
-    [
-      load,
-    ],
+    [load],
   )
 
 
   return (
     <>
       <div
-        className="
-          space-y-4
-        "
+        className="space-y-4"
       >
         <Input
           value={search}
           onChange={
-            (
-              event
-            ) => {
+            event => {
               setSearch(
-                event
-                  .target
-                  .value
+                event.target.value
               )
-
               setPage(1)
             }
           }
@@ -269,14 +220,12 @@ function MovieCatalog({
         />
 
         <div
-          className="
-            overflow-x-auto
-          "
+          className="overflow-x-auto"
         >
           <table
             className="
               w-full
-              min-w-[760px]
+              min-w-[820px]
               text-sm
             "
           >
@@ -287,59 +236,37 @@ function MovieCatalog({
                   text-left
                 "
               >
-                <th
-                  className="
-                    p-3
-                  "
-                >
+                <th className="p-3">
                   <SortButton
                     label="Title"
                     active
-                    descending={
-                      descending
-                    }
+                    descending={descending}
                     onClick={
                       () => {
                         setDescending(
                           !descending
                         )
-
                         setPage(1)
                       }
                     }
                   />
                 </th>
-
-                <th
-                  className="
-                    p-3
-                  "
-                >
+                <th className="p-3">
                   Year
                 </th>
-
-                <th
-                  className="
-                    p-3
-                  "
-                >
+                <th className="p-3">
                   Runtime
                 </th>
-
-                <th
-                  className="
-                    p-3
-                  "
-                >
+                <th className="p-3">
                   Versions
                 </th>
-
-                <th
-                  className="
-                    p-3
-                  "
-                >
+                <th className="p-3">
                   Storage
+                </th>
+                <th
+                  className="p-3 text-right"
+                >
+                  Action
                 </th>
               </tr>
             </thead>
@@ -347,21 +274,10 @@ function MovieCatalog({
             <tbody>
               {
                 movies.map(
-                  (
-                    movie
-                  ) => (
+                  movie => (
                     <tr
-                      key={
-                        movie.id
-                      }
-                      onClick={
-                        () =>
-                          setSelectedMovie(
-                            movie
-                          )
-                      }
+                      key={movie.id}
                       className="
-                        cursor-pointer
                         border-b
                         hover:bg-muted/50
                       "
@@ -372,11 +288,8 @@ function MovieCatalog({
                           font-medium
                         "
                       >
-                        {
-                          movie.title
-                        }
+                        {movie.title}
                       </td>
-
                       <td
                         className="
                           p-3
@@ -388,7 +301,6 @@ function MovieCatalog({
                           ?? "—"
                         }
                       </td>
-
                       <td
                         className="
                           p-3
@@ -397,12 +309,10 @@ function MovieCatalog({
                       >
                         {
                           formatDuration(
-                            movie
-                              .runtime_seconds
+                            movie.runtime_seconds
                           )
                         }
                       </td>
-
                       <td
                         className="
                           p-3
@@ -410,11 +320,9 @@ function MovieCatalog({
                         "
                       >
                         {
-                          movie
-                            .version_count
+                          movie.version_count
                         }
                       </td>
-
                       <td
                         className="
                           p-3
@@ -423,10 +331,29 @@ function MovieCatalog({
                       >
                         {
                           formatBytes(
-                            movie
-                              .storage_bytes
+                            movie.storage_bytes
                           )
                         }
+                      </td>
+                      <td
+                        className="
+                          p-3
+                          text-right
+                        "
+                      >
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={
+                            () =>
+                              setEditorId(
+                                movie.id
+                              )
+                          }
+                        >
+                          Open
+                        </Button>
                       </td>
                     </tr>
                   )
@@ -438,283 +365,31 @@ function MovieCatalog({
 
         <TablePagination
           page={page}
-          pageSize={
-            pageSize
-          }
-          totalPages={
-            totalPages
-          }
+          pageSize={pageSize}
+          totalPages={totalPages}
           count={count}
-          onPageChange={
-            setPage
-          }
+          onPageChange={setPage}
           onPageSizeChange={
-            (
-              value
-            ) => {
-              setPageSize(
-                value
-              )
-
+            value => {
+              setPageSize(value)
               setPage(1)
             }
           }
         />
       </div>
 
-      <Dialog
-        open={
-          selectedMovie
-          !== null
+      <CatalogItemEditorDialog
+        kind={
+          editorId
+            ? "movie"
+            : null
         }
-        onOpenChange={
-          (
-            open
-          ) => {
-            if (!open) {
-              setSelectedMovie(
-                null
-              )
-            }
-          }
+        id={editorId}
+        onClose={
+          () => setEditorId(null)
         }
-      >
-        <ScrollableDialogContent>
-          {
-            selectedMovie
-            && (
-              <>
-                <ScrollableDialogHeader>
-                  <DialogTitle>
-                    {
-                      selectedMovie
-                        .title
-                    }
-
-                    {
-                      selectedMovie.year
-                      ? (
-                        ` (${selectedMovie.year})`
-                      )
-                      : ""
-                    }
-                  </DialogTitle>
-                </ScrollableDialogHeader>
-
-                <ScrollableDialogBody
-                  className="
-                    space-y-5
-                  "
-                >
-                  <div
-                    className="
-                      grid
-                      gap-4
-                      md:grid-cols-3
-                    "
-                  >
-                    <Card>
-                      <CardHeader>
-                        <CardDescription>
-                          Runtime
-                        </CardDescription>
-
-                        <CardTitle
-                          className="
-                            text-xl
-                          "
-                        >
-                          {
-                            formatDuration(
-                              selectedMovie
-                                .runtime_seconds
-                            )
-                          }
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardDescription>
-                          Versions
-                        </CardDescription>
-
-                        <CardTitle
-                          className="
-                            text-xl
-                          "
-                        >
-                          {
-                            selectedMovie
-                              .version_count
-                          }
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardDescription>
-                          Storage
-                        </CardDescription>
-
-                        <CardTitle
-                          className="
-                            text-xl
-                          "
-                        >
-                          {
-                            formatBytes(
-                              selectedMovie
-                                .storage_bytes
-                            )
-                          }
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-                  </div>
-
-                  <div
-                    className="
-                      space-y-3
-                    "
-                  >
-                    <h3
-                      className="
-                        text-lg
-                        font-semibold
-                      "
-                    >
-                      Versions
-                    </h3>
-
-                    {
-                      selectedMovie
-                        .versions
-                        .map(
-                          (
-                            version
-                          ) => (
-                            <div
-                              key={
-                                version.id
-                              }
-                              className="
-                                rounded-md
-                                border
-                                p-4
-                              "
-                            >
-                              <div
-                                className="
-                                  flex
-                                  flex-wrap
-                                  items-center
-                                  gap-2
-                                "
-                              >
-                                <strong>
-                                  {
-                                    version.name
-                                  }
-                                </strong>
-
-                                {
-                                  version.edition
-                                  && (
-                                    <Badge
-                                      variant="outline"
-                                    >
-                                      {
-                                        version.edition
-                                      }
-                                    </Badge>
-                                  )
-                                }
-
-                                {
-                                  version.is_primary
-                                  && (
-                                    <Badge>
-                                      Primary
-                                    </Badge>
-                                  )
-                                }
-                              </div>
-
-                              <div
-                                className="
-                                  mt-2
-                                  break-all
-                                  text-sm
-                                  text-muted-foreground
-                                "
-                              >
-                                {
-                                  version
-                                    .relative_path
-                                }
-                              </div>
-
-                              <div
-                                className="
-                                  mt-2
-                                  flex
-                                  flex-wrap
-                                  gap-4
-                                  text-sm
-                                "
-                              >
-                                <span>
-                                  {
-                                    formatBytes(
-                                      version
-                                        .size_bytes
-                                    )
-                                  }
-                                </span>
-
-                                <span>
-                                  {
-                                    formatDuration(
-                                      version
-                                        .duration_seconds
-                                    )
-                                  }
-                                </span>
-
-                                <span>
-                                  {
-                                    version
-                                      .video_codec
-                                    || "—"
-                                  }
-                                </span>
-
-                                <span>
-                                  {
-                                    version.width
-                                    && version.height
-                                      ? (
-                                        `${version.width}×`
-                                        + `${version.height}`
-                                      )
-                                      : "—"
-                                  }
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        )
-                    }
-                  </div>
-                </ScrollableDialogBody>
-              </>
-            )
-          }
-        </ScrollableDialogContent>
-      </Dialog>
+        onChanged={load}
+      />
     </>
   )
 }
@@ -730,44 +405,37 @@ function TvCatalog({
   const [
     series,
     setSeries,
-  ] = useState<
-    CatalogSeries[]
-  >([])
+  ] = useState<CatalogSeries[]>([])
 
   const [
     selectedSeries,
     setSelectedSeries,
-  ] = useState<
-    CatalogSeries | null
-  >(null)
+  ] = useState<CatalogSeries | null>(null)
 
   const [
     seasons,
     setSeasons,
-  ] = useState<
-    CatalogSeason[]
-  >([])
+  ] = useState<CatalogSeason[]>([])
 
   const [
     selectedSeason,
     setSelectedSeason,
-  ] = useState<
-    CatalogSeason | null
-  >(null)
+  ] = useState<CatalogSeason | null>(null)
 
   const [
     episodes,
     setEpisodes,
-  ] = useState<
-    CatalogEpisode[]
-  >([])
+  ] = useState<CatalogEpisode[]>([])
 
   const [
-    selectedMediaItemId,
-    setSelectedMediaItemId,
-  ] = useState<
-    string | null
-  >(null)
+    editorKind,
+    setEditorKind,
+  ] = useState<CatalogEditorKind | null>(null)
+
+  const [
+    editorId,
+    setEditorId,
+  ] = useState<string | null>(null)
 
   const [
     search,
@@ -782,9 +450,7 @@ function TvCatalog({
   const [
     pageSize,
     setPageSize,
-  ] = useState<
-    PageSize
-  >(20)
+  ] = useState<PageSize>(20)
 
   const [
     count,
@@ -816,14 +482,8 @@ function TvCatalog({
             pageSize,
           )
 
-        setSeries(
-          result.results
-        )
-
-        setCount(
-          result.count
-        )
-
+        setSeries(result.results)
+        setCount(result.count)
         setTotalPages(
           result.total_pages
         )
@@ -839,18 +499,67 @@ function TvCatalog({
     )
 
 
+  const loadSeasons =
+    useCallback(
+      async () => {
+        if (!selectedSeries) {
+          setSeasons([])
+          return
+        }
+
+        const result =
+          await getCatalogSeasons(
+            selectedSeries.id,
+          )
+
+        setSeasons(
+          result.results
+        )
+      },
+      [selectedSeries],
+    )
+
+
+  const loadEpisodes =
+    useCallback(
+      async () => {
+        if (!selectedSeason) {
+          setEpisodes([])
+          return
+        }
+
+        const result =
+          await getCatalogEpisodes(
+            selectedSeason.id,
+            search,
+            "episode_number",
+            page,
+            pageSize,
+          )
+
+        setEpisodes(result.results)
+        setCount(result.count)
+        setTotalPages(
+          result.total_pages
+        )
+      },
+      [
+        selectedSeason,
+        search,
+        page,
+        pageSize,
+      ],
+    )
+
+
   useEffect(
     () => {
-      if (
-        !selectedSeries
-        && !selectedSeason
-      ) {
+      if (!selectedSeries) {
         void loadSeries()
       }
     },
     [
       selectedSeries,
-      selectedSeason,
       loadSeries,
     ],
   )
@@ -858,77 +567,23 @@ function TvCatalog({
 
   useEffect(
     () => {
-      if (!selectedSeries) {
-        setSeasons([])
-        return
-      }
-
-      void getCatalogSeasons(
-        selectedSeries.id,
-      ).then(
-        (
-          result
-        ) =>
-          setSeasons(
-            result.results
-          )
-      )
+      void loadSeasons()
     },
-    [
-      selectedSeries,
-    ],
+    [loadSeasons],
   )
 
 
   useEffect(
     () => {
-      if (!selectedSeason) {
-        setEpisodes([])
-        return
-      }
-
-      void getCatalogEpisodes(
-        selectedSeason.id,
-        search,
-        "episode_number",
-        page,
-        pageSize,
-      ).then(
-        (
-          result
-        ) => {
-          setEpisodes(
-            result.results
-          )
-
-          setCount(
-            result.count
-          )
-
-          setTotalPages(
-            result.total_pages
-          )
-        }
-      )
+      void loadEpisodes()
     },
-    [
-      selectedSeason,
-      search,
-      page,
-      pageSize,
-    ],
+    [loadEpisodes],
   )
 
 
-  function goSeriesRoot() {
-    setSelectedSeries(
-      null
-    )
-
-    setSelectedSeason(
-      null
-    )
-
+  function goRoot() {
+    setSelectedSeries(null)
+    setSelectedSeason(null)
     setSearch("")
     setPage(1)
   }
@@ -937,14 +592,8 @@ function TvCatalog({
   function openSeries(
     item: CatalogSeries,
   ) {
-    setSelectedSeries(
-      item
-    )
-
-    setSelectedSeason(
-      null
-    )
-
+    setSelectedSeries(item)
+    setSelectedSeason(null)
     setSearch("")
     setPage(1)
   }
@@ -953,21 +602,44 @@ function TvCatalog({
   function openSeason(
     item: CatalogSeason,
   ) {
-    setSelectedSeason(
-      item
-    )
-
+    setSelectedSeason(item)
     setSearch("")
     setPage(1)
+  }
+
+
+  function openEditor(
+    kind: CatalogEditorKind,
+    id: string,
+  ) {
+    setEditorKind(kind)
+    setEditorId(id)
+  }
+
+
+  async function refreshAfterEditor() {
+    if (editorKind === "series") {
+      await loadSeries()
+      await loadSeasons()
+      return
+    }
+
+    if (editorKind === "season") {
+      await loadSeasons()
+      await loadEpisodes()
+      return
+    }
+
+    if (editorKind === "episode") {
+      await loadEpisodes()
+    }
   }
 
 
   return (
     <>
       <div
-        className="
-          space-y-4
-        "
+        className="space-y-4"
       >
         <div
           className="
@@ -985,9 +657,7 @@ function TvCatalog({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={
-              goSeriesRoot
-            }
+            onClick={goRoot}
           >
             TV Shows
           </Button>
@@ -997,9 +667,7 @@ function TvCatalog({
             && (
               <>
                 <span
-                  className="
-                    text-muted-foreground
-                  "
+                  className="text-muted-foreground"
                 >
                   /
                 </span>
@@ -1010,19 +678,13 @@ function TvCatalog({
                   size="sm"
                   onClick={
                     () => {
-                      setSelectedSeason(
-                        null
-                      )
-
+                      setSelectedSeason(null)
                       setSearch("")
                       setPage(1)
                     }
                   }
                 >
-                  {
-                    selectedSeries
-                      .title
-                  }
+                  {selectedSeries.title}
                 </Button>
               </>
             )
@@ -1033,13 +695,10 @@ function TvCatalog({
             && (
               <>
                 <span
-                  className="
-                    text-muted-foreground
-                  "
+                  className="text-muted-foreground"
                 >
                   /
                 </span>
-
                 <span
                   className="
                     px-2
@@ -1047,10 +706,7 @@ function TvCatalog({
                     font-medium
                   "
                 >
-                  {
-                    selectedSeason
-                      .title
-                  }
+                  {selectedSeason.title}
                 </span>
               </>
             )
@@ -1066,15 +722,10 @@ function TvCatalog({
             <Input
               value={search}
               onChange={
-                (
-                  event
-                ) => {
+                event => {
                   setSearch(
-                    event
-                      .target
-                      .value
+                    event.target.value
                   )
-
                   setPage(1)
                 }
               }
@@ -1092,14 +743,12 @@ function TvCatalog({
           && (
             <>
               <div
-                className="
-                  overflow-x-auto
-                "
+                className="overflow-x-auto"
               >
                 <table
                   className="
                     w-full
-                    min-w-[800px]
+                    min-w-[900px]
                     text-sm
                   "
                 >
@@ -1110,59 +759,37 @@ function TvCatalog({
                         text-left
                       "
                     >
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         <SortButton
                           label="Series"
                           active
-                          descending={
-                            descending
-                          }
+                          descending={descending}
                           onClick={
                             () => {
                               setDescending(
                                 !descending
                               )
-
                               setPage(1)
                             }
                           }
                         />
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Seasons
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Episodes
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Runtime
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Storage
+                      </th>
+                      <th
+                        className="p-3 text-right"
+                      >
+                        Metadata
                       </th>
                     </tr>
                   </thead>
@@ -1170,18 +797,12 @@ function TvCatalog({
                   <tbody>
                     {
                       series.map(
-                        (
-                          item
-                        ) => (
+                        item => (
                           <tr
-                            key={
-                              item.id
-                            }
+                            key={item.id}
                             onClick={
                               () =>
-                                openSeries(
-                                  item
-                                )
+                                openSeries(item)
                             }
                             className="
                               cursor-pointer
@@ -1189,21 +810,12 @@ function TvCatalog({
                               hover:bg-muted/50
                             "
                           >
-                            <td
-                              className="
-                                p-3
-                              "
-                            >
+                            <td className="p-3">
                               <div
-                                className="
-                                  font-medium
-                                "
+                                className="font-medium"
                               >
-                                {
-                                  item.title
-                                }
+                                {item.title}
                               </div>
-
                               {
                                 item.start_year
                                 && (
@@ -1213,64 +825,58 @@ function TvCatalog({
                                       text-muted-foreground
                                     "
                                   >
-                                    {
-                                      item.start_year
-                                    }
+                                    {item.start_year}
                                   </div>
                                 )
                               }
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
-                              {
-                                item
-                                  .season_count
-                              }
+                              {item.season_count}
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
-                              {
-                                item
-                                  .episode_count
-                              }
+                              {item.episode_count}
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
                               {
                                 formatDuration(
-                                  item
-                                    .runtime_seconds
+                                  item.runtime_seconds
                                 )
                               }
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
                               {
                                 formatBytes(
-                                  item
-                                    .storage_bytes
+                                  item.storage_bytes
                                 )
                               }
+                            </td>
+                            <td
+                              className="p-3 text-right"
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={
+                                  event => {
+                                    event.stopPropagation()
+                                    openEditor(
+                                      "series",
+                                      item.id,
+                                    )
+                                  }
+                                }
+                              >
+                                Edit
+                              </Button>
                             </td>
                           </tr>
                         )
@@ -1282,24 +888,13 @@ function TvCatalog({
 
               <TablePagination
                 page={page}
-                pageSize={
-                  pageSize
-                }
-                totalPages={
-                  totalPages
-                }
+                pageSize={pageSize}
+                totalPages={totalPages}
                 count={count}
-                onPageChange={
-                  setPage
-                }
+                onPageChange={setPage}
                 onPageSizeChange={
-                  (
-                    value
-                  ) => {
-                    setPageSize(
-                      value
-                    )
-
+                  value => {
+                    setPageSize(value)
                     setPage(1)
                   }
                 }
@@ -1313,14 +908,12 @@ function TvCatalog({
           && !selectedSeason
           && (
             <div
-              className="
-                overflow-x-auto
-              "
+              className="overflow-x-auto"
             >
               <table
                 className="
                   w-full
-                  min-w-[720px]
+                  min-w-[760px]
                   text-sm
                 "
               >
@@ -1331,36 +924,22 @@ function TvCatalog({
                       text-left
                     "
                   >
-                    <th
-                      className="
-                        p-3
-                      "
-                    >
+                    <th className="p-3">
                       Season
                     </th>
-
-                    <th
-                      className="
-                        p-3
-                      "
-                    >
+                    <th className="p-3">
                       Episodes
                     </th>
-
-                    <th
-                      className="
-                        p-3
-                      "
-                    >
+                    <th className="p-3">
                       Runtime
                     </th>
-
-                    <th
-                      className="
-                        p-3
-                      "
-                    >
+                    <th className="p-3">
                       Storage
+                    </th>
+                    <th
+                      className="p-3 text-right"
+                    >
+                      Metadata
                     </th>
                   </tr>
                 </thead>
@@ -1368,18 +947,12 @@ function TvCatalog({
                 <tbody>
                   {
                     seasons.map(
-                      (
-                        season
-                      ) => (
+                      season => (
                         <tr
-                          key={
-                            season.id
-                          }
+                          key={season.id}
                           onClick={
                             () =>
-                              openSeason(
-                                season
-                              )
+                              openSeason(season)
                           }
                           className="
                             cursor-pointer
@@ -1388,54 +961,52 @@ function TvCatalog({
                           "
                         >
                           <td
-                            className="
-                              p-3
-                              font-medium
-                            "
+                            className="p-3 font-medium"
                           >
-                            {
-                              season.title
-                            }
+                            {season.title}
                           </td>
-
                           <td
-                            className="
-                              p-3
-                              tabular-nums
-                            "
+                            className="p-3 tabular-nums"
                           >
-                            {
-                              season
-                                .episode_count
-                            }
+                            {season.episode_count}
                           </td>
-
                           <td
-                            className="
-                              p-3
-                              tabular-nums
-                            "
+                            className="p-3 tabular-nums"
                           >
                             {
                               formatDuration(
-                                season
-                                  .runtime_seconds
+                                season.runtime_seconds
                               )
                             }
                           </td>
-
                           <td
-                            className="
-                              p-3
-                              tabular-nums
-                            "
+                            className="p-3 tabular-nums"
                           >
                             {
                               formatBytes(
-                                season
-                                  .storage_bytes
+                                season.storage_bytes
                               )
                             }
+                          </td>
+                          <td
+                            className="p-3 text-right"
+                          >
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={
+                                event => {
+                                  event.stopPropagation()
+                                  openEditor(
+                                    "season",
+                                    season.id,
+                                  )
+                                }
+                              }
+                            >
+                              Edit
+                            </Button>
                           </td>
                         </tr>
                       )
@@ -1452,14 +1023,12 @@ function TvCatalog({
           && (
             <>
               <div
-                className="
-                  overflow-x-auto
-                "
+                className="overflow-x-auto"
               >
                 <table
                   className="
                     w-full
-                    min-w-[820px]
+                    min-w-[860px]
                     text-sm
                   "
                 >
@@ -1470,44 +1039,25 @@ function TvCatalog({
                         text-left
                       "
                     >
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         #
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Title
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Runtime
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Versions
                       </th>
-
-                      <th
-                        className="
-                          p-3
-                        "
-                      >
+                      <th className="p-3">
                         Storage
+                      </th>
+                      <th
+                        className="p-3 text-right"
+                      >
+                        Metadata
                       </th>
                     </tr>
                   </thead>
@@ -1515,93 +1065,71 @@ function TvCatalog({
                   <tbody>
                     {
                       episodes.map(
-                        (
-                          episode
-                        ) => (
+                        episode => (
                           <tr
-                            key={
-                              episode.id
-                            }
-                            onClick={
-                              () =>
-                                setSelectedMediaItemId(
-                                  episode
-                                    .media_item_id
-                                )
-                            }
+                            key={episode.id}
                             className="
-                              cursor-pointer
                               border-b
                               hover:bg-muted/50
                             "
                           >
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
                               {
-                                episode
-                                  .episode_end_number
+                                episode.episode_end_number
                                   ? (
                                     `${episode.episode_number}`
                                     + `–${episode.episode_end_number}`
                                   )
-                                  : episode
-                                      .episode_number
+                                  : episode.episode_number
                               }
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                font-medium
-                              "
+                              className="p-3 font-medium"
                             >
-                              {
-                                episode.title
-                              }
+                              {episode.title}
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
                               {
                                 formatDuration(
-                                  episode
-                                    .runtime_seconds
+                                  episode.runtime_seconds
                                 )
                               }
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
-                              {
-                                episode
-                                  .version_count
-                              }
+                              {episode.version_count}
                             </td>
-
                             <td
-                              className="
-                                p-3
-                                tabular-nums
-                              "
+                              className="p-3 tabular-nums"
                             >
                               {
                                 formatBytes(
-                                  episode
-                                    .storage_bytes
+                                  episode.storage_bytes
                                 )
                               }
+                            </td>
+                            <td
+                              className="p-3 text-right"
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={
+                                  () =>
+                                    openEditor(
+                                      "episode",
+                                      episode.id,
+                                    )
+                                }
+                              >
+                                Open
+                              </Button>
                             </td>
                           </tr>
                         )
@@ -1613,24 +1141,13 @@ function TvCatalog({
 
               <TablePagination
                 page={page}
-                pageSize={
-                  pageSize
-                }
-                totalPages={
-                  totalPages
-                }
+                pageSize={pageSize}
+                totalPages={totalPages}
                 count={count}
-                onPageChange={
-                  setPage
-                }
+                onPageChange={setPage}
                 onPageSizeChange={
-                  (
-                    value
-                  ) => {
-                    setPageSize(
-                      value
-                    )
-
+                  value => {
+                    setPageSize(value)
                     setPage(1)
                   }
                 }
@@ -1640,15 +1157,17 @@ function TvCatalog({
         }
       </div>
 
-      <MediaDetailDialog
-        mediaItemId={
-          selectedMediaItemId
-        }
+      <CatalogItemEditorDialog
+        kind={editorKind}
+        id={editorId}
         onClose={
-          () =>
-            setSelectedMediaItemId(
-              null
-            )
+          () => {
+            setEditorKind(null)
+            setEditorId(null)
+          }
+        }
+        onChanged={
+          refreshAfterEditor
         }
       />
     </>
@@ -1661,10 +1180,10 @@ export function SemanticCatalog({
 }: {
   library: Library
 }) {
-  const refreshKey = (
+  const refreshKey =
     library.last_scanned_at
     ?? ""
-  )
+
   const [
     unresolvedCount,
     setUnresolvedCount,
@@ -1686,9 +1205,7 @@ export function SemanticCatalog({
   const [
     kind,
     setKind,
-  ] = useState<
-    CatalogKind
-  >(
+  ] = useState<CatalogKind>(
     defaultKind
   )
 
@@ -1702,7 +1219,6 @@ export function SemanticCatalog({
           1,
           10,
         ),
-
         getSemanticMatches(
           library.id,
           "conflict",
@@ -1717,7 +1233,6 @@ export function SemanticCatalog({
           setUnresolvedCount(
             unresolved.count
           )
-
           setConflictCount(
             conflicts.count
           )
@@ -1766,9 +1281,7 @@ export function SemanticCatalog({
 
   return (
     <div
-      className="
-        space-y-4
-      "
+      className="space-y-4"
     >
       <div
         className="
@@ -1787,30 +1300,24 @@ export function SemanticCatalog({
           "
         >
           {
-            unresolvedCount
-            > 0
+            unresolvedCount > 0
             && (
               <Badge
                 variant="outline"
               >
-                {
-                  unresolvedCount
-                }
+                {unresolvedCount}
                 {" unresolved"}
               </Badge>
             )
           }
 
           {
-            conflictCount
-            > 0
+            conflictCount > 0
             && (
               <Badge
                 variant="destructive"
               >
-                {
-                  conflictCount
-                }
+                {conflictCount}
                 {" conflicts"}
               </Badge>
             )
@@ -1820,89 +1327,64 @@ export function SemanticCatalog({
 
       {
         showChooser
-        ? (
-          <Tabs
-            value={kind}
-            onValueChange={
-              (
-                value
-              ) =>
-                setKind(
-                  (
-                    value
-                  ) as CatalogKind
-                )
-            }
-          >
-            <TabsList>
-              <TabsTrigger
-                value="movies"
-              >
-                Movies
-              </TabsTrigger>
-
-              <TabsTrigger
-                value="tv"
-              >
-                TV Shows
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent
-              value="movies"
-              className="
-                mt-5
-              "
-            >
-              <MovieCatalog
-                library={
-                  library
-                }
-                refreshKey={
-                  refreshKey
-                }
-              />
-            </TabsContent>
-
-            <TabsContent
-              value="tv"
-              className="
-                mt-5
-              "
-            >
-              <TvCatalog
-                library={
-                  library
-                }
-                refreshKey={
-                  refreshKey
-                }
-              />
-            </TabsContent>
-          </Tabs>
-        )
-        : library.content_type
-          === "tv"
           ? (
-            <TvCatalog
-              library={
-                library
+            <Tabs
+              value={kind}
+              onValueChange={
+                value =>
+                  setKind(
+                    value as CatalogKind
+                  )
               }
-              refreshKey={
-                refreshKey
-              }
-            />
+            >
+              <TabsList>
+                <TabsTrigger
+                  value="movies"
+                >
+                  Movies
+                </TabsTrigger>
+                <TabsTrigger
+                  value="tv"
+                >
+                  TV Shows
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent
+                value="movies"
+                className="mt-4"
+              >
+                <MovieCatalog
+                  library={library}
+                  refreshKey={refreshKey}
+                />
+              </TabsContent>
+
+              <TabsContent
+                value="tv"
+                className="mt-4"
+              >
+                <TvCatalog
+                  library={library}
+                  refreshKey={refreshKey}
+                />
+              </TabsContent>
+            </Tabs>
           )
-          : (
-            <MovieCatalog
-              library={
-                library
-              }
-              refreshKey={
-                refreshKey
-              }
-            />
-          )
+          : library.content_type
+            === "tv"
+            ? (
+              <TvCatalog
+                library={library}
+                refreshKey={refreshKey}
+              />
+            )
+            : (
+              <MovieCatalog
+                library={library}
+                refreshKey={refreshKey}
+              />
+            )
       }
     </div>
   )

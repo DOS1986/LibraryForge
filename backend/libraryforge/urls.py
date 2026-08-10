@@ -9,6 +9,15 @@ from rest_framework.routers import (
     DefaultRouter,
 )
 
+from catalog.editor_views import (
+    episode_editor,
+    media_version_editor,
+    media_version_make_primary,
+    movie_editor,
+    season_editor,
+    series_editor,
+)
+
 from catalog.views import (
     EpisodeCatalogViewSet,
     MovieCatalogViewSet,
@@ -155,6 +164,42 @@ urlpatterns = [
         "api/system/version/",
         system_version,
         name="system-version",
+    ),
+
+    path(
+        "api/catalog-editor/movies/<uuid:item_id>/",
+        movie_editor,
+        name="catalog-editor-movie",
+    ),
+
+    path(
+        "api/catalog-editor/series/<uuid:series_id>/",
+        series_editor,
+        name="catalog-editor-series",
+    ),
+
+    path(
+        "api/catalog-editor/seasons/<uuid:season_id>/",
+        season_editor,
+        name="catalog-editor-season",
+    ),
+
+    path(
+        "api/catalog-editor/episodes/<uuid:episode_id>/",
+        episode_editor,
+        name="catalog-editor-episode",
+    ),
+
+    path(
+        "api/catalog-editor/versions/<uuid:version_id>/",
+        media_version_editor,
+        name="catalog-editor-version",
+    ),
+
+    path(
+        "api/catalog-editor/versions/<uuid:version_id>/make-primary/",
+        media_version_make_primary,
+        name="catalog-editor-version-primary",
     ),
 
     path(

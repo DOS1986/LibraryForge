@@ -90,7 +90,45 @@ class MediaItem(models.Model):
         default=False,
     )
 
+    sort_title = models.CharField(
+        max_length=1024,
+        blank=True,
+        default="",
+    )
+
+    original_title = models.CharField(
+        max_length=1024,
+        blank=True,
+        default="",
+    )
+
     description = models.TextField(
+        blank=True,
+    )
+
+    tagline = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    content_rating = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    genres = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    studios = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    external_ids = models.JSONField(
+        default=dict,
         blank=True,
     )
 

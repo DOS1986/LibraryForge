@@ -9,6 +9,11 @@ from catalog.models import (
     Series,
 )
 
+from catalog.services.canonical import (
+    is_field_locked,
+    set_field_provenance,
+)
+
 from catalog.services.parser import (
     SemanticCandidate,
     build_version_name,
@@ -284,66 +289,87 @@ def _ensure_version(
     media_item,
     edition="",
 ):
+    version = (
+        MediaVersion.objects
+        .filter(
+            media_file=media_file
+        )
+        .first()
+    )
+
+    technical_metadata = {
+        "video_codec":
+            media_file.video_codec,
+
+        "width":
+            media_file.width,
+
+        "height":
+            media_file.height,
+
+        "container_format":
+            media_file.container_format,
+
+        "bit_rate":
+            media_file.bit_rate,
+
+        "audio_codec":
+            media_file.audio_codec,
+
+        "audio_channels":
+            media_file.audio_channels,
+    }
+
+    if version:
+        version.media_item = media_item
+        version.metadata = technical_metadata
+
+        if not is_field_locked(
+            target_type="media_version",
+            target_id=version.id,
+            field_name="name",
+        ):
+            version.name = (
+                build_version_name(
+                    media_file
+                )
+            )
+
+        if (
+            edition
+            and not is_field_locked(
+                target_type="media_version",
+                target_id=version.id,
+                field_name="edition",
+            )
+        ):
+            version.edition = edition
+
+        version.save()
+
+        return version
+
     other_primary_exists = (
         MediaVersion.objects
         .filter(
             media_item=media_item,
             is_primary=True,
         )
-        .exclude(
-            media_file=media_file
-        )
         .exists()
     )
 
-    version, _created = (
-        MediaVersion.objects
-        .update_or_create(
-            media_file=media_file,
-            defaults={
-                "media_item":
-                    media_item,
-
-                "name":
-                    build_version_name(
-                        media_file
-                    ),
-
-                "edition":
-                    edition,
-
-                "is_primary":
-                    not other_primary_exists,
-
-                "metadata":
-                    {
-                        "video_codec":
-                            media_file.video_codec,
-
-                        "width":
-                            media_file.width,
-
-                        "height":
-                            media_file.height,
-
-                        "container_format":
-                            media_file
-                            .container_format,
-
-                        "bit_rate":
-                            media_file.bit_rate,
-
-                        "audio_codec":
-                            media_file.audio_codec,
-
-                        "audio_channels":
-                            media_file.audio_channels,
-                    },
-            },
-        )
+    return MediaVersion.objects.create(
+        media_file=media_file,
+        media_item=media_item,
+        name=build_version_name(
+            media_file
+        ),
+        edition=edition,
+        is_primary=(
+            not other_primary_exists
+        ),
+        metadata=technical_metadata,
     )
-
-    return version
 
 
 def _movie_item(
@@ -408,30 +434,90 @@ def _movie_item(
         )
 
     if not item.semantic_locked:
-        item.title = (
-            candidate.title
-        )
+        if not (
+            item.pk
+            and is_field_locked(
+                target_type="media_item",
+                target_id=item.id,
+                field_name="title",
+            )
+        ):
+            item.title = (
+                candidate.title
+            )
 
         canonical = dict(
             item.canonical_metadata
             or {}
         )
 
+        semantic = dict(
+            canonical.get(
+                "semantic",
+                {},
+            )
+        )
+
+        semantic[
+            "kind"
+        ] = "movie"
+
+        if not (
+            item.pk
+            and is_field_locked(
+                target_type="media_item",
+                target_id=item.id,
+                field_name="year",
+            )
+        ):
+            semantic[
+                "year"
+            ] = candidate.year
+
         canonical[
             "semantic"
-        ] = {
-            "kind":
-                "movie",
-
-            "year":
-                candidate.year,
-        }
+        ] = semantic
 
         item.canonical_metadata = (
             canonical
         )
 
     item.save()
+
+    if not is_field_locked(
+        target_type="media_item",
+        target_id=item.id,
+        field_name="title",
+    ):
+        set_field_provenance(
+            target_type="media_item",
+            target_id=item.id,
+            field_name="title",
+            source=candidate.source,
+            value=item.title,
+        )
+
+    if not is_field_locked(
+        target_type="media_item",
+        target_id=item.id,
+        field_name="year",
+    ):
+        set_field_provenance(
+            target_type="media_item",
+            target_id=item.id,
+            field_name="year",
+            source=candidate.source,
+            value=(
+                item.canonical_metadata
+                .get(
+                    "semantic",
+                    {},
+                )
+                .get(
+                    "year"
+                )
+            ),
+        )
 
     _move_media_file(
         media_file,
@@ -542,6 +628,11 @@ def _series_object(
         # do not require creating a new logical Series.
         if (
             candidate.series_title
+            and not is_field_locked(
+                target_type="series",
+                target_id=series.id,
+                field_name="title",
+            )
             and identity_text_key(
                 series.title
             )
@@ -572,21 +663,32 @@ def _series_object(
                     .series_title
                 )
 
-                series.sort_title = (
-                    candidate
-                    .series_title
+                changed_fields.append(
+                    "title"
                 )
 
-                changed_fields.extend(
-                    [
-                        "title",
-                        "sort_title",
-                    ]
-                )
+                if not is_field_locked(
+                    target_type="series",
+                    target_id=series.id,
+                    field_name="sort_title",
+                ):
+                    series.sort_title = (
+                        candidate
+                        .series_title
+                    )
+
+                    changed_fields.append(
+                        "sort_title"
+                    )
 
         if (
             candidate.series_year
             and not series.start_year
+            and not is_field_locked(
+                target_type="series",
+                target_id=series.id,
+                field_name="start_year",
+            )
         ):
             series.start_year = (
                 candidate
@@ -641,6 +743,35 @@ def _series_object(
                     )
                 )
             )
+
+    if not is_field_locked(
+        target_type="series",
+        target_id=series.id,
+        field_name="title",
+    ):
+        set_field_provenance(
+            target_type="series",
+            target_id=series.id,
+            field_name="title",
+            source=candidate.source,
+            value=series.title,
+        )
+
+    if (
+        candidate.series_year
+        and not is_field_locked(
+            target_type="series",
+            target_id=series.id,
+            field_name="start_year",
+        )
+    ):
+        set_field_provenance(
+            target_type="series",
+            target_id=series.id,
+            field_name="start_year",
+            source=candidate.source,
+            value=series.start_year,
+        )
 
     return (
         series,
@@ -785,7 +916,14 @@ def _episode_item(
             or candidate.title
         )
 
-        if desired_title:
+        if (
+            desired_title
+            and not is_field_locked(
+                target_type="episode",
+                target_id=episode.id,
+                field_name="title",
+            )
+        ):
             item.title = (
                 desired_title
             )
@@ -824,12 +962,30 @@ def _episode_item(
 
         item.save()
 
+    if not is_field_locked(
+        target_type="episode",
+        target_id=episode.id,
+        field_name="title",
+    ):
+        set_field_provenance(
+            target_type="episode",
+            target_id=episode.id,
+            field_name="title",
+            source=candidate.source,
+            value=item.title,
+        )
+
     if (
         candidate
         .episode_end_number
         and not episode.locked
         and episode.episode_end_number
         != candidate.episode_end_number
+        and not is_field_locked(
+            target_type="episode",
+            target_id=episode.id,
+            field_name="episode_end_number",
+        )
     ):
         episode.episode_end_number = (
             candidate

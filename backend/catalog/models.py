@@ -1,6 +1,8 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 
 class Series(models.Model):
@@ -22,6 +24,38 @@ class Series(models.Model):
 
     sort_title = models.CharField(
         max_length=1024,
+        blank=True,
+    )
+
+    original_title = models.CharField(
+        max_length=1024,
+        blank=True,
+        default="",
+    )
+
+    tagline = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    content_rating = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    genres = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    studios = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    external_ids = models.JSONField(
+        default=dict,
         blank=True,
     )
 
@@ -112,6 +146,11 @@ class Season(models.Model):
         blank=True,
     )
 
+    external_ids = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
     locked = models.BooleanField(
         default=False,
     )
@@ -191,6 +230,11 @@ class Episode(models.Model):
         blank=True,
     )
 
+    external_ids = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
     locked = models.BooleanField(
         default=False,
     )
@@ -258,6 +302,11 @@ class MediaVersion(models.Model):
         blank=True,
     )
 
+    notes = models.TextField(
+        blank=True,
+        default="",
+    )
+
     is_primary = models.BooleanField(
         default=False,
     )
@@ -279,6 +328,20 @@ class MediaVersion(models.Model):
         ordering = [
             "-is_primary",
             "name",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "media_item",
+                ],
+                condition=Q(
+                    is_primary=True
+                ),
+                name=(
+                    "unique_primary_media_version"
+                ),
+            )
         ]
 
     def __str__(self):
@@ -391,3 +454,249 @@ class SemanticMatch(models.Model):
             f"{self.media_file.relative_path}: "
             f"{self.status}"
         )
+
+class CanonicalFieldState(models.Model):
+    class TargetType(models.TextChoices):
+        MEDIA_ITEM = (
+            "media_item",
+            "Media Item",
+        )
+
+        SERIES = (
+            "series",
+            "Series",
+        )
+
+        SEASON = (
+            "season",
+            "Season",
+        )
+
+        EPISODE = (
+            "episode",
+            "Episode",
+        )
+
+        MEDIA_VERSION = (
+            "media_version",
+            "Media Version",
+        )
+
+    class Source(models.TextChoices):
+        MANUAL = (
+            "manual",
+            "Manual",
+        )
+
+        NFO = (
+            "nfo",
+            "NFO",
+        )
+
+        FILENAME = (
+            "filename",
+            "Filename",
+        )
+
+        FOLDER = (
+            "folder",
+            "Folder Structure",
+        )
+
+        FFPROBE = (
+            "ffprobe",
+            "ffprobe",
+        )
+
+        EMBEDDED = (
+            "embedded",
+            "Embedded Tags",
+        )
+
+        TUBEARCHIVIST = (
+            "tubearchivist",
+            "TubeArchivist",
+        )
+
+        YT_DLP = (
+            "yt_dlp",
+            "yt-dlp",
+        )
+
+        SYSTEM = (
+            "system",
+            "System",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    target_type = models.CharField(
+        max_length=32,
+        choices=TargetType.choices,
+        db_index=True,
+    )
+
+    target_id = models.UUIDField(
+        db_index=True,
+    )
+
+    field_name = models.CharField(
+        max_length=128,
+    )
+
+    source = models.CharField(
+        max_length=32,
+        choices=Source.choices,
+        default=Source.SYSTEM,
+    )
+
+    source_ref = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    value_snapshot = models.JSONField(
+        null=True,
+        blank=True,
+    )
+
+    locked = models.BooleanField(
+        default=False,
+    )
+
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="canonical_field_updates",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "field_name",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "target_type",
+                    "target_id",
+                    "field_name",
+                ],
+                name=(
+                    "unique_canonical_field_state"
+                ),
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=[
+                    "target_type",
+                    "target_id",
+                ]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.target_type}:"
+            f"{self.target_id}:"
+            f"{self.field_name}"
+        )
+
+
+class MetadataChangeSet(models.Model):
+    class Source(models.TextChoices):
+        MANUAL = (
+            "manual",
+            "Manual",
+        )
+
+        SYSTEM = (
+            "system",
+            "System",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    target_type = models.CharField(
+        max_length=32,
+        choices=(
+            CanonicalFieldState
+            .TargetType
+            .choices
+        ),
+        db_index=True,
+    )
+
+    target_id = models.UUIDField(
+        db_index=True,
+    )
+
+    source = models.CharField(
+        max_length=32,
+        choices=Source.choices,
+        default=Source.MANUAL,
+    )
+
+    changes = models.JSONField(
+        default=dict,
+    )
+
+    note = models.TextField(
+        blank=True,
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="metadata_change_sets",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = [
+            "-created_at",
+        ]
+
+        indexes = [
+            models.Index(
+                fields=[
+                    "target_type",
+                    "target_id",
+                    "created_at",
+                ]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.target_type}:"
+            f"{self.target_id} "
+            f"@ {self.created_at}"
+        )
+

@@ -566,3 +566,166 @@ export interface SystemVersionInfo {
   django_version: string
 }
 
+
+export type CatalogEditorKind =
+  | "movie"
+  | "series"
+  | "season"
+  | "episode"
+
+export interface CanonicalFieldState {
+  id: string
+  target_type:
+    | "media_item"
+    | "series"
+    | "season"
+    | "episode"
+    | "media_version"
+  target_id: string
+  field_name: string
+  source:
+    | "manual"
+    | "nfo"
+    | "filename"
+    | "folder"
+    | "ffprobe"
+    | "embedded"
+    | "tubearchivist"
+    | "yt_dlp"
+    | "system"
+  source_label: string
+  source_ref: string
+  value_snapshot: unknown
+  locked: boolean
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MetadataChangeSet {
+  id: string
+  target_type:
+    | "media_item"
+    | "series"
+    | "season"
+    | "episode"
+    | "media_version"
+  target_id: string
+  source:
+    | "manual"
+    | "system"
+  source_label: string
+  changes: Record<
+    string,
+    {
+      old: unknown
+      new: unknown
+    }
+  >
+  note: string
+  changed_by: string | null
+  changed_by_label: string | null
+  created_at: string
+}
+
+export interface CatalogEditorVersion {
+  id: string
+  media_item_id: string
+  file_id: string
+  name: string
+  edition: string
+  notes: string
+  is_primary: boolean
+  file_name: string
+  relative_path: string
+  size_bytes: number
+  duration_seconds: number | null
+  container_format: string
+  bit_rate: number | null
+  video_codec: string
+  width: number | null
+  height: number | null
+  audio_codec: string
+  audio_channels: number | null
+  metadata: Record<string, unknown>
+}
+
+export interface CatalogEditorSource {
+  id: string
+  source_type:
+    | "filename"
+    | "ffprobe"
+    | "embedded"
+    | "tubearchivist"
+    | "yt_dlp"
+    | "nfo"
+  source_type_label: string
+  status:
+    | "detected"
+    | "not_detected"
+    | "not_found"
+    | "error"
+  status_label: string
+  media_file_id: string
+  file_name: string
+  relative_path: string
+  extracted_data: Record<string, unknown>
+  error: string
+  last_checked_at: string
+}
+
+export interface CatalogEditorNfoFile {
+  id: string
+  file_name: string
+  relative_path: string
+  root_element: string
+  title: string
+  year: number | null
+  raw_xml: string
+  parsed_data: Record<string, unknown>
+  parse_status:
+    | "ok"
+    | "error"
+    | "unparsed"
+  parse_error: string
+  is_generated: boolean
+  is_present: boolean
+  updated_at: string
+}
+
+export interface CatalogEditorContext {
+  series_id?: string
+  series_title?: string
+  season_id?: string
+  season_number?: number
+  episode_number?: number
+  episode_end_number?: number | null
+}
+
+export interface CatalogEditorDetail {
+  kind: CatalogEditorKind
+  id: string
+  media_item_id?: string
+  library_id: string
+  semantic_key: string | null
+  semantic_locked: boolean
+  context?: CatalogEditorContext
+  metadata: Record<string, unknown>
+  field_states: CanonicalFieldState[]
+  versions: CatalogEditorVersion[]
+  sources: CatalogEditorSource[]
+  nfo_files: CatalogEditorNfoFile[]
+  history: MetadataChangeSet[]
+}
+
+export interface CatalogMetadataUpdate {
+  note?: string
+  [key: string]: unknown
+}
+
+export interface CatalogVersionUpdate {
+  name?: string
+  edition?: string
+  notes?: string
+  note?: string
+}

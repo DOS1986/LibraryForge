@@ -1,6 +1,11 @@
 import type {
+  CatalogEditorDetail,
+  CatalogEditorKind,
+  CatalogEditorVersion,
   CatalogEpisode,
+  CatalogMetadataUpdate,
   CatalogMovie,
+  CatalogVersionUpdate,
   CatalogSeason,
   CatalogSeries,
   Library,
@@ -1066,6 +1071,108 @@ export async function getSystemVersion() {
     SystemVersionInfo
   >(
     "/api/system/version/",
+  )
+}
+
+
+function catalogEditorPath(
+  kind: CatalogEditorKind,
+  id: string,
+) {
+  const plural = (
+    kind === "series"
+      ? "series"
+      : kind === "movie"
+        ? "movies"
+        : kind === "season"
+          ? "seasons"
+          : "episodes"
+  )
+
+  return (
+    `/api/catalog-editor/${plural}/${id}/`
+  )
+}
+
+
+export async function getCatalogEditorDetail(
+  kind: CatalogEditorKind,
+  id: string,
+) {
+  return request<
+    CatalogEditorDetail
+  >(
+    catalogEditorPath(
+      kind,
+      id,
+    ),
+  )
+}
+
+
+export async function updateCatalogEditorMetadata(
+  kind: CatalogEditorKind,
+  id: string,
+  input: CatalogMetadataUpdate,
+) {
+  await ensureCsrf()
+
+  return request<
+    CatalogEditorDetail
+  >(
+    catalogEditorPath(
+      kind,
+      id,
+    ),
+    {
+      method:
+        "PATCH",
+
+      body:
+        JSON.stringify(
+          input
+        ),
+    },
+  )
+}
+
+
+export async function updateCatalogVersion(
+  versionId: string,
+  input: CatalogVersionUpdate,
+) {
+  await ensureCsrf()
+
+  return request<
+    CatalogEditorVersion
+  >(
+    `/api/catalog-editor/versions/${versionId}/`,
+    {
+      method:
+        "PATCH",
+
+      body:
+        JSON.stringify(
+          input
+        ),
+    },
+  )
+}
+
+
+export async function makeCatalogVersionPrimary(
+  versionId: string,
+) {
+  await ensureCsrf()
+
+  return request<
+    CatalogEditorVersion
+  >(
+    `/api/catalog-editor/versions/${versionId}/make-primary/`,
+    {
+      method:
+        "POST",
+    },
   )
 }
 
