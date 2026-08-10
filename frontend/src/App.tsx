@@ -15,6 +15,11 @@ import {
 } from "@/components/app/AppShell"
 
 import {
+  RestartingSplash,
+  StartupSplash,
+} from "@/components/app/RestartSplash"
+
+import {
   LoginScreen,
 } from "@/components/auth/LoginScreen"
 
@@ -23,12 +28,24 @@ import {
 } from "@/lib/api"
 
 import {
+  UserSettingsProvider,
+} from "@/lib/user-settings"
+
+import {
   DashboardPage,
 } from "@/pages/DashboardPage"
 
 import {
   JobsPage,
 } from "@/pages/JobsPage"
+
+import {
+  SettingsPage,
+} from "@/pages/SettingsPage"
+
+import {
+  SystemStatusPage,
+} from "@/pages/SystemStatusPage"
 
 import {
   LibraryFilesPage,
@@ -72,57 +89,67 @@ import type {
 
 
 function App() {
-  const [
-    user,
-    setUser,
-  ] = useState<
-    User | null
-  >(null)
+  const [user, setUser] =
+    useState<User | null>(null)
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true)
+  const [loading, setLoading] =
+    useState(true)
+
+  const [bootReady, setBootReady] =
+    useState(
+      () =>
+        window.sessionStorage.getItem(
+          "libraryforge.show-startup-splash",
+        ) !== "1",
+    )
+
+  const [restartRuntime, setRestartRuntime] =
+    useState<string | null>(null)
 
 
   useEffect(
     () => {
+      if (!bootReady) {
+        return
+      }
+
+      setLoading(true)
+
       getMe()
-        .then(
-          (
-            result
-          ) =>
-            setUser(
-              result.user
-            )
-        )
-        .catch(
-          () =>
-            setUser(
-              null
-            )
-        )
-        .finally(
-          () =>
-            setLoading(
-              false
-            )
-        )
+        .then((result) => setUser(result.user))
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false))
     },
-    [],
+    [bootReady],
   )
+
+
+  if (restartRuntime) {
+    return (
+      <RestartingSplash
+        previousRuntimeStartedAt={restartRuntime}
+      />
+    )
+  }
+
+
+  if (!bootReady) {
+    return (
+      <StartupSplash
+        onComplete={() => {
+          window.sessionStorage.removeItem(
+            "libraryforge.show-startup-splash",
+          )
+          setBootReady(true)
+        }}
+      />
+    )
+  }
 
 
   if (loading) {
     return (
-      <main
-        className="
-          flex
-          min-h-screen
-          items-center
-          justify-center
-        "
-      >
+      <main className="flex min-h-screen items-center justify-center">
         Loading LibraryForge...
       </main>
     )
@@ -132,9 +159,7 @@ function App() {
   if (!user) {
     return (
       <LoginScreen
-        onLogin={
-          setUser
-        }
+        onLogin={setUser}
       />
     )
   }
@@ -142,118 +167,108 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route
-          element={
-            <AppShell
-              user={user}
-              onLogout={
-                () =>
-                  setUser(
-                    null
+      <UserSettingsProvider>
+        <Routes>
+          <Route
+            element={(
+              <AppShell
+                user={user}
+                onLogout={() => setUser(null)}
+                onRestartStarted={(result) => {
+                  setRestartRuntime(
+                    result.runtime_started_at,
                   )
-              }
-            />
-          }
-        >
-          <Route
-            index
-            element={
-              <DashboardPage />
-            }
-          />
-
-          <Route
-            path="libraries/:libraryId"
-            element={
-              <LibraryLayout />
-            }
+                }}
+              />
+            )}
           >
             <Route
               index
-              element={
-                <Navigate
-                  to="overview"
-                  replace
-                />
-              }
-            />
-
-            <Route
-              path="overview"
-              element={
-                <LibraryOverviewPage />
-              }
-            />
-
-            <Route
-              path="media"
-              element={
-                <LibraryMediaPage />
-              }
-            />
-
-            <Route
-              path="files"
-              element={
-                <LibraryFilesPage />
-              }
-            />
-
-            <Route
-              path="nfo"
-              element={
-                <LibraryNfoPage />
-              }
-            />
-
-            <Route
-              path="sources"
-              element={
-                <LibrarySourcesPage />
-              }
-            />
-
-            <Route
-              path="attention"
-              element={
-                <LibraryNeedsAttentionPage />
-              }
-            />
-
-            <Route
-              path="projections"
-              element={
-                <LibraryProjectionsPage />
-              }
+              element={<DashboardPage />}
             />
 
             <Route
               path="settings"
-              element={
-                <LibrarySettingsPage />
-              }
+              element={<SettingsPage />}
+            />
+
+            <Route
+              path="system"
+              element={<SystemStatusPage />}
+            />
+
+            <Route
+              path="libraries/:libraryId"
+              element={<LibraryLayout />}
+            >
+              <Route
+                index
+                element={(
+                  <Navigate
+                    to="overview"
+                    replace
+                  />
+                )}
+              />
+
+              <Route
+                path="overview"
+                element={<LibraryOverviewPage />}
+              />
+
+              <Route
+                path="media"
+                element={<LibraryMediaPage />}
+              />
+
+              <Route
+                path="files"
+                element={<LibraryFilesPage />}
+              />
+
+              <Route
+                path="nfo"
+                element={<LibraryNfoPage />}
+              />
+
+              <Route
+                path="sources"
+                element={<LibrarySourcesPage />}
+              />
+
+              <Route
+                path="attention"
+                element={<LibraryNeedsAttentionPage />}
+              />
+
+              <Route
+                path="projections"
+                element={<LibraryProjectionsPage />}
+              />
+
+              <Route
+                path="settings"
+                element={<LibrarySettingsPage />}
+              />
+            </Route>
+
+            <Route
+              path="jobs"
+              element={<JobsPage />}
+            />
+
+            <Route
+              path="*"
+              element={(
+                <Navigate
+                  to="/"
+                  replace
+                />
+              )}
             />
           </Route>
-
-          <Route
-            path="jobs"
-            element={
-              <JobsPage />
-            }
-          />
-
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to="/"
-                replace
-              />
-            }
-          />
-        </Route>
-      </Routes>
+        </Routes>
+      </UserSettingsProvider>
     </BrowserRouter>
   )
 }

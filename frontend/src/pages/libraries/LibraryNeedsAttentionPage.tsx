@@ -42,6 +42,10 @@ import {
 } from "@/components/attention/SemanticMatchDialog"
 
 import {
+  SortableHeader,
+} from "@/components/tables/SortableHeader"
+
+import {
   TablePagination,
 } from "@/components/tables/TablePagination"
 
@@ -58,7 +62,12 @@ import {
   useLibraryOutlet,
 } from "@/lib/route-context"
 
+import {
+  useUserSettings,
+} from "@/lib/user-settings"
+
 import type {
+  NeedsAttentionOrdering,
   PageSize,
   SemanticMatch,
 } from "@/types"
@@ -119,6 +128,10 @@ export function LibraryNeedsAttentionPage() {
     library,
   } = useLibraryOutlet()
 
+  const {
+    settings,
+  } = useUserSettings()
+
   const [
     tab,
     setTab,
@@ -160,6 +173,23 @@ export function LibraryNeedsAttentionPage() {
   >(20)
 
   const [
+    orderingByTab,
+    setOrderingByTab,
+  ] = useState<Record<
+    AttentionTab,
+    NeedsAttentionOrdering
+  >>({
+    unresolved: "confidence",
+    conflict: "-updated_at",
+    confirmed: "-updated_at",
+  })
+
+  const [
+    settingsApplied,
+    setSettingsApplied,
+  ] = useState(false)
+
+  const [
     count,
     setCount,
   ] = useState(0)
@@ -195,6 +225,38 @@ export function LibraryNeedsAttentionPage() {
   ] = useState<
     string | null
   >(null)
+
+
+  useEffect(
+    () => {
+      if (
+        !settings
+        || settingsApplied
+      ) {
+        return
+      }
+
+      setPageSize(
+        settings.default_page_size
+      )
+
+      setOrderingByTab({
+        unresolved:
+          settings.needs_attention_unresolved_sort,
+        conflict:
+          settings.needs_attention_conflict_sort,
+        confirmed:
+          settings.needs_attention_confirmed_sort,
+      })
+
+      setPage(1)
+      setSettingsApplied(true)
+    },
+    [
+      settings,
+      settingsApplied,
+    ],
+  )
 
 
   const refreshCounts =
@@ -292,12 +354,7 @@ export function LibraryNeedsAttentionPage() {
                 search,
 
                 ordering:
-                  tab
-                  === "confirmed"
-                    ? "-updated_at"
-                    : (
-                      "-confidence"
-                    ),
+                  orderingByTab[tab],
 
                 page,
 
@@ -337,6 +394,7 @@ export function LibraryNeedsAttentionPage() {
         search,
         page,
         pageSize,
+        orderingByTab,
       ],
     )
 
@@ -367,6 +425,21 @@ export function LibraryNeedsAttentionPage() {
     setSearch("")
     setPage(1)
     setSelected(null)
+  }
+
+
+  function changeOrdering(
+    value: string,
+  ) {
+    setOrderingByTab(
+      (current) => ({
+        ...current,
+        [tab]:
+          value as NeedsAttentionOrdering,
+      })
+    )
+
+    setPage(1)
   }
 
 
@@ -604,60 +677,56 @@ export function LibraryNeedsAttentionPage() {
                           text-left
                         "
                       >
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          File
-                        </th>
+                        <SortableHeader
+                          label="File"
+                          field="media_file__file_name"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          Status
-                        </th>
+                        <SortableHeader
+                          label="Status"
+                          field="status"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          Source
-                        </th>
+                        <SortableHeader
+                          label="Source"
+                          field="source"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          Confidence
-                        </th>
+                        <SortableHeader
+                          label="Confidence"
+                          field="confidence"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          Current Assignment
-                        </th>
+                        <SortableHeader
+                          label="Current Assignment"
+                          field="media_file__media_item__title"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                          "
-                        >
-                          Media
-                        </th>
+                        <SortableHeader
+                          label="Media"
+                          field="media_file__size_bytes"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
 
-                        <th
-                          className="
-                            p-3
-                            text-right
-                          "
-                        >
+                        <SortableHeader
+                          label="Updated"
+                          field="updated_at"
+                          ordering={orderingByTab[tab]}
+                          onChange={changeOrdering}
+                        />
+
+                        <th className="p-3 text-right">
                           Action
                         </th>
                       </tr>
@@ -671,7 +740,7 @@ export function LibraryNeedsAttentionPage() {
                         && (
                           <tr>
                             <td
-                              colSpan={7}
+                              colSpan={8}
                               className="
                                 p-10
                                 text-center
@@ -691,7 +760,7 @@ export function LibraryNeedsAttentionPage() {
                         && (
                           <tr>
                             <td
-                              colSpan={7}
+                              colSpan={8}
                               className="
                                 p-10
                                 text-center
@@ -869,6 +938,12 @@ export function LibraryNeedsAttentionPage() {
                                     )
                                   }
                                 </div>
+                              </td>
+
+                              <td className="p-3 whitespace-nowrap">
+                                {new Date(
+                                  match.updated_at
+                                ).toLocaleString()}
                               </td>
 
                               <td

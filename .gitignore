@@ -18,6 +18,7 @@ frontend/dist/
 .vscode/*.log
 .idea/
 
+
 # OS
 .DS_Store
 Thumbs.db
@@ -26,6 +27,7 @@ Thumbs.db
 *.log
 
 # Runtime / test media
+/runtime/
 data/
 test-media/
 

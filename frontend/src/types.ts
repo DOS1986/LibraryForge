@@ -772,3 +772,80 @@ export interface CatalogVersionUpdate {
   notes?: string
   note?: string
 }
+
+
+export type NeedsAttentionOrdering =
+  | "media_file__file_name"
+  | "-media_file__file_name"
+  | "media_file__relative_path"
+  | "-media_file__relative_path"
+  | "status"
+  | "-status"
+  | "source"
+  | "-source"
+  | "confidence"
+  | "-confidence"
+  | "media_file__media_item__title"
+  | "-media_file__media_item__title"
+  | "media_file__duration_seconds"
+  | "-media_file__duration_seconds"
+  | "media_file__size_bytes"
+  | "-media_file__size_bytes"
+  | "updated_at"
+  | "-updated_at"
+
+export interface UserSettings {
+  display_name: string
+  email: string
+  is_staff: boolean
+  is_superuser: boolean
+  default_page_size: PageSize
+  needs_attention_unresolved_sort: NeedsAttentionOrdering
+  needs_attention_conflict_sort: NeedsAttentionOrdering
+  needs_attention_confirmed_sort: NeedsAttentionOrdering
+  show_build_information: boolean
+  confirm_restart: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface UserSettingsUpdate {
+  display_name?: string
+  default_page_size?: PageSize
+  needs_attention_unresolved_sort?: NeedsAttentionOrdering
+  needs_attention_conflict_sort?: NeedsAttentionOrdering
+  needs_attention_confirmed_sort?: NeedsAttentionOrdering
+  show_build_information?: boolean
+  confirm_restart?: boolean
+}
+
+export interface SystemHealth {
+  status: "ok"
+  version: string
+  runtime_started_at: string
+}
+
+export interface SystemStatus {
+  status: "ok"
+  version: SystemVersionInfo
+  database: {
+    status: "ok" | "error"
+    detail: string
+  }
+  ffprobe: {
+    status: "ok" | "missing"
+    configured_path: string
+    resolved_path: string | null
+  }
+  restart: {
+    supported: boolean
+    request_file: string | null
+    last_requested_at: string | null
+    last_requested_by: string | null
+  }
+}
+
+export interface RestartRequestResult {
+  accepted: boolean
+  runtime_started_at: string
+}

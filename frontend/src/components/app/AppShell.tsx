@@ -11,10 +11,6 @@ import {
 } from "react-router-dom"
 
 import {
-  Button,
-} from "@/components/ui/button"
-
-import {
   Card,
   CardContent,
   CardHeader,
@@ -24,6 +20,10 @@ import {
 import {
   Separator,
 } from "@/components/ui/separator"
+
+import {
+  AccountMenu,
+} from "@/components/app/AccountMenu"
 
 import {
   BuildVersionCard,
@@ -38,12 +38,17 @@ import {
   logout,
 } from "@/lib/api"
 
+import {
+  useUserSettings,
+} from "@/lib/user-settings"
+
 import type {
   AppOutletContext,
 } from "@/lib/route-context"
 
 import type {
   Library,
+  RestartRequestResult,
   User,
 } from "@/types"
 
@@ -113,12 +118,16 @@ interface AppShellProps {
 
   onLogout:
     () => void
+
+  onRestartStarted:
+    (result: RestartRequestResult) => void
 }
 
 
 export function AppShell({
   user,
   onLogout,
+  onRestartStarted,
 }: AppShellProps) {
   const [
     libraries,
@@ -134,6 +143,10 @@ export function AppShell({
 
   const navigate =
     useNavigate()
+
+  const {
+    settings,
+  } = useUserSettings()
 
 
   const refreshLibraries =
@@ -238,31 +251,11 @@ export function AppShell({
             </div>
           </div>
 
-          <div
-            className="
-              flex
-              items-center
-              gap-4
-            "
-          >
-            <span
-              className="
-                text-sm
-                text-muted-foreground
-              "
-            >
-              {user.email}
-            </span>
-
-            <Button
-              variant="outline"
-              onClick={
-                handleSignOut
-              }
-            >
-              Sign Out
-            </Button>
-          </div>
+          <AccountMenu
+            user={user}
+            onLogout={handleSignOut}
+            onRestartStarted={onRestartStarted}
+          />
         </div>
       </header>
 
@@ -449,7 +442,12 @@ export function AppShell({
             }
           />
 
-          <BuildVersionCard />
+          {
+            (settings?.show_build_information ?? true)
+            && (
+              <BuildVersionCard />
+            )
+          }
         </aside>
 
         <section>

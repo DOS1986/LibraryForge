@@ -36,6 +36,9 @@ from jobs.views import ScanJobViewSet
 from libraries.views import LibraryViewSet
 
 from libraryforge.system_views import (
+    system_health,
+    system_restart,
+    system_status,
     system_version,
 )
 
@@ -170,6 +173,31 @@ urlpatterns = [
         "api/system/version/",
         system_version,
         name="system-version",
+    ),
+
+    path(
+        "api/system/health/",
+        system_health,
+        name="system-health",
+    ),
+
+    path(
+        "api/system/status/",
+        system_status,
+        name="system-status",
+    ),
+
+    path(
+        "api/system/restart/",
+        system_restart,
+        name="system-restart",
+    ),
+
+    path(
+        "api/preferences/",
+        include(
+            "preferences.urls"
+        ),
     ),
 
 

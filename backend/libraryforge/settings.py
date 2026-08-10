@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "catalog",
     "outputs",
     "operations",
+    "preferences",
     "jobs",
 ]
 

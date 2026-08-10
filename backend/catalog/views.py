@@ -371,11 +371,16 @@ class SemanticMatchViewSet(
 
     ordering_fields = [
         "status",
+        "source",
         "confidence",
         "locked",
         "last_resolved_at",
         "updated_at",
+        "media_file__file_name",
         "media_file__relative_path",
+        "media_file__media_item__title",
+        "media_file__duration_seconds",
+        "media_file__size_bytes",
     ]
 
     ordering = [

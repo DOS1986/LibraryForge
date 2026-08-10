@@ -22,12 +22,38 @@ pre-1.0 development.
   totals.
 * Regression tests for artwork discovery, association, selection, API access,
   and scan behavior.
+* Persistent per-user application settings through `UserSettings`.
+* Configurable default page size and Needs Attention sorting preferences.
+* User display-name and build-information visibility preferences.
+* Initials-based user avatar and account dropdown.
+* Global Settings page.
+* System Status page with application and dependency information.
+* Public system health endpoint.
+* Staff and superuser application restart controls.
+* Restart audit history through `SystemAction`.
+* Cross-platform development supervisors now manage the Django server, scan
+  worker, and Vite frontend as one LibraryForge development stack.
+* macOS Finder-compatible development launcher.
+* Restart/startup splash screen with health polling and automatic return to the login page.
+* Regression tests for user preferences, health checks, restart authorization,
+  and supervisor restart requests.
 
 ### Changed
 
 * Library scans now index recognized local artwork after semantic catalog
   resolution.
 * Files browsing and recursive storage totals now include indexed artwork.
+* Needs Attention queues now support server-side sorting with sortable table
+  headers.
+* Needs Attention sorting preferences persist per user.
+* The header email and standalone Sign Out button have been replaced by an
+  account menu containing Settings, System Status, Restart LibraryForge, and
+  Log Out.
+* Build information can now be shown or hidden through the user's settings.
+* Application restart now waits for an active scan to finish before restarting
+  the scan worker, preventing in-progress scan jobs from being abandoned.
+* Queued scan jobs remain queued across application restarts and are processed
+  by the newly started worker.
 
 ### Safety
 
@@ -36,6 +62,11 @@ pre-1.0 development.
   download artwork in this version.
 * Artwork reconciliation preserves the existing scan safety rule when
   filesystem discovery encounters errors.
+* Application restart is restricted to staff and superuser accounts.
+* Restart requests do not expose arbitrary operating-system commands through
+  the web API.
+* Only the administrator requesting a restart is logged out; other user
+  sessions are preserved.
 
 
 ## [0.1.0-alpha.2] - Canonical Metadata Editor

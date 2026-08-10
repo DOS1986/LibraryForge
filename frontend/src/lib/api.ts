@@ -25,13 +25,18 @@ import type {
   Projection,
   ProjectionPreview,
   ProjectionRunResult,
+  RestartRequestResult,
   ScanJob,
   SemanticMatch,
   SemanticResetResult,
   SemanticResolveInput,
   StorageTestResult,
+  SystemHealth,
+  SystemStatus,
   SystemVersionInfo,
   User,
+  UserSettings,
+  UserSettingsUpdate,
 } from "@/types"
 
 
@@ -1210,3 +1215,52 @@ export async function refreshLibraryArtwork(
   )
 }
 
+
+
+
+export async function getUserSettings() {
+  return request<UserSettings>(
+    "/api/preferences/settings/",
+  )
+}
+
+
+export async function updateUserSettings(
+  input: UserSettingsUpdate,
+) {
+  await ensureCsrf()
+
+  return request<UserSettings>(
+    "/api/preferences/settings/",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+
+export async function getSystemHealth() {
+  return request<SystemHealth>(
+    "/api/system/health/",
+  )
+}
+
+
+export async function getSystemStatus() {
+  return request<SystemStatus>(
+    "/api/system/status/",
+  )
+}
+
+
+export async function requestSystemRestart() {
+  await ensureCsrf()
+
+  return request<RestartRequestResult>(
+    "/api/system/restart/",
+    {
+      method: "POST",
+    },
+  )
+}
