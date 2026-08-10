@@ -9,6 +9,14 @@ pre-1.0 development.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.1.0-alpha.3] - Artwork Management and Application Housekeeping
+
+### Added
+
 * First-class local artwork indexing for Movies, Series, Seasons, and Episodes.
 * Detection of common local artwork conventions including poster, folder, cover,
   fanart, backdrop, banner, logo, clearlogo, landscape, thumb, and episode
