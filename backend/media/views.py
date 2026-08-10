@@ -2,6 +2,7 @@ import uuid
 
 from django.db.models import (
     CharField,
+    UUIDField,
     F,
     Q,
     Value,
@@ -23,6 +24,8 @@ from libraryforge.pagination import (
 )
 
 from metadata.models import NfoFile
+
+from catalog.models import ArtworkFile
 
 from .models import (
     MediaFile,
@@ -159,6 +162,16 @@ class LibraryAssetViewSet(
             )
         )
 
+        artwork_queryset = (
+            ArtworkFile.objects
+            .filter(
+                library_id=parsed_id,
+                library__owner=(
+                    self.request.user
+                ),
+            )
+        )
+
         if search:
             media_queryset = (
                 media_queryset
@@ -196,6 +209,27 @@ class LibraryAssetViewSet(
                     )
                     | Q(
                         media_item__title__icontains=(
+                            search
+                        )
+                    )
+                )
+            )
+
+            artwork_queryset = (
+                artwork_queryset
+                .filter(
+                    Q(
+                        relative_path__icontains=(
+                            search
+                        )
+                    )
+                    | Q(
+                        file_name__icontains=(
+                            search
+                        )
+                    )
+                    | Q(
+                        artwork_type__icontains=(
                             search
                         )
                     )
@@ -266,10 +300,53 @@ class LibraryAssetViewSet(
             )
         )
 
+        artwork_values = (
+            artwork_queryset
+            .annotate(
+                media_item=Value(
+                    None,
+                    output_field=(
+                        UUIDField()
+                    ),
+                ),
+
+                media_title=Value(
+                    "",
+                    output_field=(
+                        CharField()
+                    ),
+                ),
+
+                asset_type=Value(
+                    "artwork",
+                    output_field=(
+                        CharField()
+                    ),
+                ),
+
+                metadata_status=F(
+                    "artwork_type"
+                ),
+            )
+            .values(
+                "id",
+                "library",
+                "media_item",
+                "media_title",
+                "asset_type",
+                "relative_path",
+                "file_name",
+                "size_bytes",
+                "is_present",
+                "metadata_status",
+            )
+        )
+
         return (
             media_values
             .union(
                 nfo_values,
+                artwork_values,
                 all=True,
             )
             .order_by(

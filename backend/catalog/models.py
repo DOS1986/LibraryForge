@@ -700,3 +700,172 @@ class MetadataChangeSet(models.Model):
             f"@ {self.created_at}"
         )
 
+
+class ArtworkFile(models.Model):
+    class TargetType(models.TextChoices):
+        MEDIA_ITEM = (
+            "media_item",
+            "Media Item",
+        )
+        SERIES = (
+            "series",
+            "Series",
+        )
+        SEASON = (
+            "season",
+            "Season",
+        )
+        EPISODE = (
+            "episode",
+            "Episode",
+        )
+
+    class ArtworkType(models.TextChoices):
+        PRIMARY = (
+            "primary",
+            "Primary",
+        )
+        BACKDROP = (
+            "backdrop",
+            "Backdrop",
+        )
+        BANNER = (
+            "banner",
+            "Banner",
+        )
+        LOGO = (
+            "logo",
+            "Logo",
+        )
+        THUMB = (
+            "thumb",
+            "Thumb",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    library = models.ForeignKey(
+        "libraries.Library",
+        on_delete=models.CASCADE,
+        related_name="artwork_files",
+    )
+
+    target_type = models.CharField(
+        max_length=32,
+        choices=TargetType.choices,
+        db_index=True,
+    )
+
+    target_id = models.UUIDField(
+        db_index=True,
+    )
+
+    artwork_type = models.CharField(
+        max_length=32,
+        choices=ArtworkType.choices,
+        db_index=True,
+    )
+
+    source_name = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    relative_path = models.TextField()
+    file_name = models.TextField()
+
+    extension = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+    )
+
+    size_bytes = models.BigIntegerField(
+        default=0,
+    )
+
+    modified_ns = models.BigIntegerField(
+        default=0,
+    )
+
+    is_selected = models.BooleanField(
+        default=False,
+        db_index=True,
+    )
+
+    is_present = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    last_seen_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "target_type",
+            "target_id",
+            "artwork_type",
+            "relative_path",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "library",
+                    "relative_path",
+                ],
+                name="unique_library_artwork_path",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "library",
+                    "target_type",
+                    "target_id",
+                    "artwork_type",
+                ],
+                condition=Q(
+                    is_selected=True,
+                    is_present=True,
+                ),
+                name="unique_selected_target_artwork",
+            ),
+        ]
+
+        indexes = [
+            models.Index(
+                fields=[
+                    "library",
+                    "is_present",
+                ]
+            ),
+            models.Index(
+                fields=[
+                    "target_type",
+                    "target_id",
+                    "artwork_type",
+                ]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.target_type}:{self.target_id} "
+            f"{self.artwork_type} - {self.relative_path}"
+        )
+

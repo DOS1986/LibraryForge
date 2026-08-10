@@ -49,6 +49,8 @@ import {
 import {
   getCatalogEditorDetail,
   makeCatalogVersionPrimary,
+  refreshLibraryArtwork,
+  selectCatalogArtwork,
   updateCatalogEditorMetadata,
   updateCatalogVersion,
   updateNfoFile,
@@ -62,6 +64,7 @@ import {
 
 import type {
   CanonicalFieldState,
+  CatalogEditorArtwork,
   CatalogEditorDetail,
   CatalogEditorKind,
   CatalogEditorNfoFile,
@@ -1770,6 +1773,364 @@ function NfoTab({
 }
 
 
+
+function ArtworkCard({
+  artwork,
+  busy,
+  onSelect,
+}: {
+  artwork: CatalogEditorArtwork
+  busy: boolean
+  onSelect: () => void
+}) {
+  return (
+    <Card
+      className={
+        artwork.is_selected
+          ? "ring-2 ring-primary/40"
+          : ""
+      }
+    >
+      <div
+        className="
+          aspect-[16/10]
+          overflow-hidden
+          rounded-t-lg
+          bg-muted
+        "
+      >
+        <img
+          src={artwork.content_url}
+          alt={artwork.file_name}
+          loading="lazy"
+          className="
+            h-full
+            w-full
+            object-contain
+          "
+        />
+      </div>
+
+      <CardContent
+        className="
+          space-y-3
+          pt-4
+        "
+      >
+        <div
+          className="
+            flex
+            items-start
+            justify-between
+            gap-2
+          "
+        >
+          <div
+            className="min-w-0"
+          >
+            <div
+              className="
+                truncate
+                text-sm
+                font-medium
+              "
+              title={artwork.file_name}
+            >
+              {artwork.file_name}
+            </div>
+
+            <div
+              className="
+                mt-1
+                truncate
+                text-xs
+                text-muted-foreground
+              "
+              title={artwork.relative_path}
+            >
+              {artwork.relative_path}
+            </div>
+          </div>
+
+          {
+            artwork.is_selected
+            && (
+              <Badge>
+                Preferred
+              </Badge>
+            )
+          }
+        </div>
+
+        <div
+          className="
+            flex
+            items-center
+            justify-between
+            gap-3
+            text-xs
+            text-muted-foreground
+          "
+        >
+          <span>
+            {artwork.source_name}
+          </span>
+
+          <span>
+            {formatBytes(artwork.size_bytes)}
+          </span>
+        </div>
+
+        {
+          !artwork.is_selected
+          && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={onSelect}
+              className="w-full"
+            >
+              Use as Preferred
+            </Button>
+          )
+        }
+      </CardContent>
+    </Card>
+  )
+}
+
+
+function ArtworkTab({
+  detail,
+  onChanged,
+}: {
+  detail: CatalogEditorDetail
+  onChanged: () => Promise<void>
+}) {
+  const [busyId, setBusyId] = useState<
+    string | null
+  >(null)
+
+  const [refreshing, setRefreshing] =
+    useState(false)
+
+  const [error, setError] = useState<
+    string | null
+  >(null)
+
+  const artworkTypes = [
+    "primary",
+    "backdrop",
+    "banner",
+    "logo",
+    "thumb",
+  ] as const
+
+  async function choose(
+    artwork: CatalogEditorArtwork,
+  ) {
+    setBusyId(artwork.id)
+    setError(null)
+
+    try {
+      await selectCatalogArtwork(
+        artwork.id
+      )
+
+      await onChanged()
+
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to select artwork."
+      )
+
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function refresh() {
+    setRefreshing(true)
+    setError(null)
+
+    try {
+      await refreshLibraryArtwork(
+        detail.library_id
+      )
+
+      await onChanged()
+
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to refresh artwork."
+      )
+
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  return (
+    <div
+      className="space-y-6"
+    >
+      <div
+        className="
+          flex
+          flex-wrap
+          items-center
+          justify-between
+          gap-3
+        "
+      >
+        <div>
+          <h3
+            className="font-semibold"
+          >
+            Local Artwork
+          </h3>
+
+          <p
+            className="
+              mt-1
+              text-sm
+              text-muted-foreground
+            "
+          >
+            LibraryForge indexes existing
+            sidecar artwork without modifying
+            the source files.
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          disabled={refreshing}
+          onClick={
+            () => void refresh()
+          }
+        >
+          {
+            refreshing
+              ? "Refreshing..."
+              : "Refresh Local Artwork"
+          }
+        </Button>
+      </div>
+
+      {
+        error
+        && (
+          <div
+            className="
+              rounded-md
+              border
+              border-destructive/40
+              bg-destructive/5
+              p-3
+              text-sm
+              text-destructive
+            "
+          >
+            {error}
+          </div>
+        )
+      }
+
+      {
+        detail.artwork.length === 0
+        && (
+          <Card>
+            <CardContent
+              className="
+                py-10
+                text-center
+                text-sm
+                text-muted-foreground
+              "
+            >
+              No recognized local artwork was
+              found for this catalog item.
+            </CardContent>
+          </Card>
+        )
+      }
+
+      {
+        artworkTypes.map(
+          artworkType => {
+            const items =
+              detail.artwork.filter(
+                artwork => (
+                  artwork.artwork_type
+                  === artworkType
+                )
+              )
+
+            if (!items.length) {
+              return null
+            }
+
+            return (
+              <section
+                key={artworkType}
+                className="space-y-3"
+              >
+                <h4
+                  className="
+                    capitalize
+                    font-medium
+                  "
+                >
+                  {artworkType}
+                </h4>
+
+                <div
+                  className="
+                    grid
+                    gap-4
+                    sm:grid-cols-2
+                    xl:grid-cols-3
+                  "
+                >
+                  {
+                    items.map(
+                      artwork => (
+                        <ArtworkCard
+                          key={artwork.id}
+                          artwork={artwork}
+                          busy={
+                            busyId
+                            === artwork.id
+                          }
+                          onSelect={
+                            () =>
+                              void choose(
+                                artwork
+                              )
+                          }
+                        />
+                      )
+                    )
+                  }
+                </div>
+              </section>
+            )
+          }
+        )
+      }
+    </div>
+  )
+}
+
+
 function HistoryTab({
   detail,
 }: {
@@ -2210,6 +2571,12 @@ export function CatalogItemEditorDialog({
                   </TabsTrigger>
 
                   <TabsTrigger
+                    value="artwork"
+                  >
+                    Artwork
+                  </TabsTrigger>
+
+                  <TabsTrigger
                     value="nfo"
                   >
                     NFO
@@ -2394,6 +2761,18 @@ export function CatalogItemEditorDialog({
                 >
                   <SourcesTab
                     detail={detail}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="artwork"
+                  className="mt-5"
+                >
+                  <ArtworkTab
+                    detail={detail}
+                    onChanged={
+                      refreshAfterChange
+                    }
                   />
                 </TabsContent>
 

@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from catalog.models import (
+    ArtworkFile,
     CanonicalFieldState,
     Episode,
     MediaVersion,
@@ -18,3 +19,4 @@ admin.site.register(MediaVersion)
 admin.site.register(SemanticMatch)
 admin.site.register(CanonicalFieldState)
 admin.site.register(MetadataChangeSet)
+admin.site.register(ArtworkFile)

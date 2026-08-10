@@ -1,4 +1,6 @@
 import type {
+  ArtworkRefreshResult,
+  CatalogEditorArtwork,
   CatalogEditorDetail,
   CatalogEditorKind,
   CatalogEditorVersion,
@@ -1172,6 +1174,38 @@ export async function makeCatalogVersionPrimary(
     {
       method:
         "POST",
+    },
+  )
+}
+
+
+export async function selectCatalogArtwork(
+  artworkId: string,
+) {
+  await ensureCsrf()
+
+  return request<
+    CatalogEditorArtwork
+  >(
+    `/api/artwork-files/${artworkId}/select/`,
+    {
+      method: "POST",
+    },
+  )
+}
+
+
+export async function refreshLibraryArtwork(
+  libraryId: string,
+) {
+  await ensureCsrf()
+
+  return request<
+    ArtworkRefreshResult
+  >(
+    `/api/libraries/${libraryId}/artwork/refresh/`,
+    {
+      method: "POST",
     },
   )
 }

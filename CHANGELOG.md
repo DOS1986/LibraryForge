@@ -9,9 +9,34 @@ pre-1.0 development.
 
 ### Added
 
+* First-class local artwork indexing for Movies, Series, Seasons, and Episodes.
+* Detection of common local artwork conventions including poster, folder, cover,
+  fanart, backdrop, banner, logo, clearlogo, landscape, thumb, and episode
+  thumbnail files.
+* Artwork association with semantic catalog entities after semantic resolution.
+* Authenticated artwork preview endpoints.
+* Preferred-artwork selection without modifying the source image files.
+* Artwork tab in the canonical catalog editor.
+* Local artwork refresh without requiring a full media or ffprobe scan.
+* Artwork records in the Files browser, recursive file counts, and storage
+  totals.
+* Regression tests for artwork discovery, association, selection, API access,
+  and scan behavior.
+
 ### Changed
 
-### Fixed
+* Library scans now index recognized local artwork after semantic catalog
+  resolution.
+* Files browsing and recursive storage totals now include indexed artwork.
+
+### Safety
+
+* Local artwork management is non-destructive.
+* LibraryForge does not rename, delete, upload, overwrite, crop, resize, or
+  download artwork in this version.
+* Artwork reconciliation preserves the existing scan safety rule when
+  filesystem discovery encounters errors.
+
 
 ## [0.1.0-alpha.2] - Canonical Metadata Editor
 

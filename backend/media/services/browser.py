@@ -1,6 +1,7 @@
 from pathlib import PurePosixPath
 
 from media.models import MediaFile
+from catalog.models import ArtworkFile
 from metadata.models import NfoFile
 
 
@@ -187,6 +188,9 @@ def _folder_entry(
             0,
 
         "nfo_count":
+            0,
+
+        "artwork_count":
             0,
 
         "file_count":
@@ -434,6 +438,9 @@ def build_library_browser_entries(
                     "nfo_count":
                         0,
 
+                    "artwork_count":
+                        0,
+
                     "file_count":
                         1,
 
@@ -594,6 +601,9 @@ def build_library_browser_entries(
                     "nfo_count":
                         1,
 
+                    "artwork_count":
+                        0,
+
                     "file_count":
                         1,
 
@@ -616,6 +626,114 @@ def build_library_browser_entries(
                     "metadata_status":
                         nfo_file
                         .parse_status,
+                }
+            )
+
+    if content_mode == "files":
+        artwork_queryset = (
+            ArtworkFile.objects
+            .filter(
+                library=library,
+                is_present=True,
+            )
+        )
+
+        if prefix:
+            artwork_queryset = (
+                artwork_queryset
+                .filter(
+                    relative_path__startswith=(
+                        prefix
+                    )
+                )
+            )
+
+        for artwork in artwork_queryset:
+            remainder = (
+                _relative_remainder(
+                    artwork.relative_path,
+                    current_path,
+                )
+            )
+
+            if not remainder:
+                continue
+
+            parts = PurePosixPath(
+                remainder
+            ).parts
+
+            if len(parts) > 1:
+                folder_name = parts[0]
+
+                folder_path = (
+                    PurePosixPath(
+                        current_path,
+                        folder_name,
+                    )
+                    .as_posix()
+                    .lstrip("/")
+                )
+
+                folder = folders.setdefault(
+                    folder_name.casefold(),
+                    _folder_entry(
+                        folder_name=folder_name,
+                        folder_path=folder_path,
+                    ),
+                )
+
+                folder[
+                    "artwork_count"
+                ] += 1
+
+                folder[
+                    "file_count"
+                ] += 1
+
+                folder[
+                    "size_bytes"
+                ] += (
+                    artwork.size_bytes
+                    or 0
+                )
+
+                continue
+
+            direct_entries.append(
+                {
+                    "entry_type":
+                        "artwork",
+                    "id":
+                        str(artwork.id),
+                    "media_item":
+                        None,
+                    "name":
+                        artwork.file_name,
+                    "title":
+                        artwork.file_name,
+                    "relative_path":
+                        artwork.relative_path,
+                    "media_count":
+                        0,
+                    "nfo_count":
+                        0,
+                    "artwork_count":
+                        1,
+                    "file_count":
+                        1,
+                    "size_bytes":
+                        artwork.size_bytes,
+                    "duration_seconds":
+                        None,
+                    "video_codec":
+                        "",
+                    "width":
+                        None,
+                    "height":
+                        None,
+                    "metadata_status":
+                        artwork.artwork_type,
                 }
             )
 

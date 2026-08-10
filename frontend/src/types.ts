@@ -92,6 +92,7 @@ export interface LibraryAsset {
   asset_type:
     | "media"
     | "nfo"
+    | "artwork"
   relative_path: string
   file_name: string
   size_bytes: number
@@ -125,6 +126,7 @@ export interface LibraryBrowserFolder {
   relative_path: string
   media_count: number
   nfo_count: number
+  artwork_count: number
   file_count: number
   duration_seconds: number
   size_bytes: number
@@ -134,6 +136,7 @@ export interface LibraryBrowserFile {
   entry_type:
     | "media"
     | "nfo"
+    | "artwork"
   id: string
   media_item: string | null
   name: string
@@ -141,6 +144,7 @@ export interface LibraryBrowserFile {
   relative_path: string
   media_count: number
   nfo_count: number
+  artwork_count: number
   file_count: number
   size_bytes: number
   duration_seconds: number | null
@@ -702,6 +706,44 @@ export interface CatalogEditorContext {
   episode_end_number?: number | null
 }
 
+export interface CatalogEditorArtwork {
+  id: string
+  library_id: string
+  target_type:
+    | "media_item"
+    | "series"
+    | "season"
+    | "episode"
+  target_id: string
+  artwork_type:
+    | "primary"
+    | "backdrop"
+    | "banner"
+    | "logo"
+    | "thumb"
+  artwork_type_label: string
+  source_name: string
+  relative_path: string
+  file_name: string
+  extension: string
+  size_bytes: number
+  is_selected: boolean
+  is_present: boolean
+  content_url: string
+  updated_at: string
+}
+
+export interface ArtworkRefreshResult {
+  created: number
+  updated: number
+  ignored: number
+  error_count: number
+  errors: Array<{
+    path: string
+    error: string
+  }>
+}
+
 export interface CatalogEditorDetail {
   kind: CatalogEditorKind
   id: string
@@ -715,6 +757,7 @@ export interface CatalogEditorDetail {
   versions: CatalogEditorVersion[]
   sources: CatalogEditorSource[]
   nfo_files: CatalogEditorNfoFile[]
+  artwork: CatalogEditorArtwork[]
   history: MetadataChangeSet[]
 }
 

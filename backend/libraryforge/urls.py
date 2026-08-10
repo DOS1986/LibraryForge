@@ -9,6 +9,12 @@ from rest_framework.routers import (
     DefaultRouter,
 )
 
+from catalog.artwork_views import (
+    artwork_content,
+    artwork_select,
+    library_artwork_refresh,
+)
+
 from catalog.editor_views import (
     episode_editor,
     media_version_editor,
@@ -164,6 +170,25 @@ urlpatterns = [
         "api/system/version/",
         system_version,
         name="system-version",
+    ),
+
+
+    path(
+        "api/artwork-files/<uuid:artwork_id>/content/",
+        artwork_content,
+        name="artwork-file-content",
+    ),
+
+    path(
+        "api/artwork-files/<uuid:artwork_id>/select/",
+        artwork_select,
+        name="artwork-file-select",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/artwork/refresh/",
+        library_artwork_refresh,
+        name="library-artwork-refresh",
     ),
 
     path(

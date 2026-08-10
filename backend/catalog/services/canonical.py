@@ -6,6 +6,7 @@ from typing import Any
 from django.db import transaction
 
 from catalog.models import (
+    ArtworkFile,
     CanonicalFieldState,
     Episode,
     MediaVersion,
@@ -14,6 +15,8 @@ from catalog.models import (
     Series,
 )
 from media.models import MediaItem
+
+from catalog.services.artwork import artwork_for_target
 from metadata.models import (
     MetadataSource,
     NfoFile,
@@ -534,6 +537,12 @@ def movie_detail(
         "nfo_files": _serialize_nfos_for_media_item(
             media_item
         ),
+        "artwork": artwork_for_target(
+            target_type=(
+                ArtworkFile.TargetType.MEDIA_ITEM
+            ),
+            target_id=media_item.id,
+        ),
         "history": serialize_history(
             target_type=target_type,
             target_id=media_item.id,
@@ -576,6 +585,12 @@ def series_detail(
         "versions": [],
         "sources": [],
         "nfo_files": [],
+        "artwork": artwork_for_target(
+            target_type=(
+                ArtworkFile.TargetType.SERIES
+            ),
+            target_id=series.id,
+        ),
         "history": serialize_history(
             target_type=target_type,
             target_id=series.id,
@@ -611,6 +626,12 @@ def season_detail(
         "versions": [],
         "sources": [],
         "nfo_files": [],
+        "artwork": artwork_for_target(
+            target_type=(
+                ArtworkFile.TargetType.SEASON
+            ),
+            target_id=season.id,
+        ),
         "history": serialize_history(
             target_type=target_type,
             target_id=season.id,
@@ -678,6 +699,12 @@ def episode_detail(
         ),
         "nfo_files": _serialize_nfos_for_media_item(
             media_item
+        ),
+        "artwork": artwork_for_target(
+            target_type=(
+                ArtworkFile.TargetType.EPISODE
+            ),
+            target_id=episode.id,
         ),
         "history": serialize_history(
             target_type=target_type,

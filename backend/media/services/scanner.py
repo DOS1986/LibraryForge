@@ -14,6 +14,11 @@ from django.db import (
 
 from django.utils import timezone
 
+from catalog.services.artwork import (
+    IMAGE_EXTENSIONS,
+    sync_artwork_candidates,
+)
+
 from catalog.services.resolver import (
     resolve_library_semantics,
 )
@@ -136,6 +141,7 @@ def discover_library_files(
 ):
     media_candidates = []
     nfo_candidates = []
+    artwork_candidates = []
     discovery_errors = []
 
     discovered_total = 0
@@ -196,6 +202,12 @@ def discover_library_files(
                     file_path
                 )
 
+            elif extension in IMAGE_EXTENSIONS:
+                artwork_candidates.append(
+                    file_path
+                )
+                continue
+
             else:
                 continue
 
@@ -240,9 +252,15 @@ def discover_library_files(
             str(path).lower()
     )
 
+    artwork_candidates.sort(
+        key=lambda path:
+            str(path).lower()
+    )
+
     return (
         media_candidates,
         nfo_candidates,
+        artwork_candidates,
         discovery_errors,
     )
 
@@ -273,6 +291,7 @@ def process_scan_job(
     (
         media_candidates,
         nfo_candidates,
+        artwork_candidates,
         discovery_errors,
     ) = discover_library_files(
         root,
@@ -775,6 +794,60 @@ def process_scan_job(
 
         job.error_count += (
             semantic_result[
+                "error_count"
+            ]
+        )
+
+        job.save(
+            update_fields=[
+                "error_count",
+                "errors",
+                "updated_at",
+            ]
+        )
+
+    job.current_path = (
+        "Indexing local artwork..."
+    )
+
+    job.save(
+        update_fields=[
+            "current_path",
+            "updated_at",
+        ]
+    )
+
+    artwork_result = (
+        sync_artwork_candidates(
+            library=library,
+            root=root,
+            candidates=artwork_candidates,
+            reconcile_missing=(
+                not job.discovery_had_errors
+            ),
+        )
+    )
+
+    if artwork_result[
+        "error_count"
+    ]:
+        for artwork_error in (
+            artwork_result[
+                "errors"
+            ]
+        ):
+            _add_error(
+                job.errors,
+                artwork_error[
+                    "path"
+                ],
+                artwork_error[
+                    "error"
+                ],
+            )
+
+        job.error_count += (
+            artwork_result[
                 "error_count"
             ]
         )

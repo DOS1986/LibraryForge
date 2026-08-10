@@ -244,7 +244,7 @@ export function LibraryFilesPage() {
         </CardTitle>
 
         <CardDescription>
-          Navigate the physical folder tree or inspect every indexed media/NFO asset in one flat list.
+          Navigate the physical folder tree or inspect every indexed media, NFO, and artwork asset in one flat list.
         </CardDescription>
       </CardHeader>
 

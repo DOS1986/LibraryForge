@@ -9,6 +9,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  FileImage,
   FileText,
   FileVideo2,
   Folder,
@@ -763,15 +764,26 @@ export function FolderBrowser({
                                   "
                                 />
                               )
-                              : (
-                                <FileText
-                                  className="
-                                    h-4
-                                    w-4
-                                    shrink-0
-                                  "
-                                />
-                              )
+                              : entry.entry_type
+                                === "artwork"
+                                ? (
+                                  <FileImage
+                                    className="
+                                      h-4
+                                      w-4
+                                      shrink-0
+                                    "
+                                  />
+                                )
+                                : (
+                                  <FileText
+                                    className="
+                                      h-4
+                                      w-4
+                                      shrink-0
+                                    "
+                                  />
+                                )
                         }
 
                         <div
@@ -868,7 +880,12 @@ export function FolderBrowser({
                               entry.nfo_count
                                 .toLocaleString()
                             }
-                            {" NFO"}
+                            {" NFO · "}
+                            {
+                              entry.artwork_count
+                                .toLocaleString()
+                            }
+                            {" artwork"}
                           </div>
                         )
                       }
