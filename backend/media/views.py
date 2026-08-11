@@ -61,6 +61,7 @@ class LibraryAssetViewSet(
         "size_bytes",
         "asset_type",
         "media_title",
+        "channel_title",
         "metadata_status",
     }
 
@@ -191,6 +192,11 @@ class LibraryAssetViewSet(
                             search
                         )
                     )
+                    | Q(
+                        media_item__online_video__channel__title__icontains=(
+                            search
+                        )
+                    )
                 )
             )
 
@@ -209,6 +215,11 @@ class LibraryAssetViewSet(
                     )
                     | Q(
                         media_item__title__icontains=(
+                            search
+                        )
+                    )
+                    | Q(
+                        media_item__online_video__channel__title__icontains=(
                             search
                         )
                     )
@@ -243,6 +254,14 @@ class LibraryAssetViewSet(
                     "media_item__title"
                 ),
 
+                channel_id=F(
+                    "media_item__online_video__channel_id"
+                ),
+
+                channel_title=F(
+                    "media_item__online_video__channel__title"
+                ),
+
                 asset_type=Value(
                     "media",
                     output_field=(
@@ -259,6 +278,8 @@ class LibraryAssetViewSet(
                 "library",
                 "media_item",
                 "media_title",
+                "channel_id",
+                "channel_title",
                 "asset_type",
                 "relative_path",
                 "file_name",
@@ -273,6 +294,14 @@ class LibraryAssetViewSet(
             .annotate(
                 media_title=F(
                     "media_item__title"
+                ),
+
+                channel_id=F(
+                    "media_item__online_video__channel_id"
+                ),
+
+                channel_title=F(
+                    "media_item__online_video__channel__title"
                 ),
 
                 asset_type=Value(
@@ -291,6 +320,8 @@ class LibraryAssetViewSet(
                 "library",
                 "media_item",
                 "media_title",
+                "channel_id",
+                "channel_title",
                 "asset_type",
                 "relative_path",
                 "file_name",
@@ -317,6 +348,20 @@ class LibraryAssetViewSet(
                     ),
                 ),
 
+                channel_id=Value(
+                    None,
+                    output_field=(
+                        UUIDField()
+                    ),
+                ),
+
+                channel_title=Value(
+                    "",
+                    output_field=(
+                        CharField()
+                    ),
+                ),
+
                 asset_type=Value(
                     "artwork",
                     output_field=(
@@ -333,6 +378,8 @@ class LibraryAssetViewSet(
                 "library",
                 "media_item",
                 "media_title",
+                "channel_id",
+                "channel_title",
                 "asset_type",
                 "relative_path",
                 "file_name",
@@ -378,11 +425,13 @@ class MediaFileViewSet(
         "file_name",
         "relative_path",
         "media_item__title",
+        "media_item__online_video__channel__title",
         "video_codec",
     ]
 
     ordering_fields = [
         "media_item__title",
+        "media_item__online_video__channel__title",
         "video_codec",
         "duration_seconds",
         "size_bytes",
@@ -405,6 +454,8 @@ class MediaFileViewSet(
             )
             .select_related(
                 "media_item",
+                "media_item__online_video",
+                "media_item__online_video__channel",
                 "library",
             )
         )

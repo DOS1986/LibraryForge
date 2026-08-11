@@ -1,3 +1,5 @@
+from django.core.exceptions import ObjectDoesNotExist
+
 from rest_framework import serializers
 
 from metadata.serializers import (
@@ -22,6 +24,15 @@ class LibraryAssetSerializer(
     )
 
     media_title = serializers.CharField(
+        allow_null=True,
+        allow_blank=True,
+    )
+
+    channel_id = serializers.UUIDField(
+        allow_null=True,
+    )
+
+    channel_title = serializers.CharField(
         allow_null=True,
         allow_blank=True,
     )
@@ -58,6 +69,34 @@ class MediaFileSerializer(
         read_only=True,
     )
 
+    channel_id = serializers.SerializerMethodField()
+    channel_title = serializers.SerializerMethodField()
+
+    def _online_video(self, obj):
+        try:
+            return obj.media_item.online_video
+        except (
+            AttributeError,
+            ObjectDoesNotExist,
+        ):
+            return None
+
+    def get_channel_id(self, obj):
+        online_video = self._online_video(obj)
+
+        if not online_video or not online_video.channel_id:
+            return None
+
+        return str(online_video.channel_id)
+
+    def get_channel_title(self, obj):
+        online_video = self._online_video(obj)
+
+        if not online_video or not online_video.channel:
+            return None
+
+        return online_video.channel.title
+
     class Meta:
         model = MediaFile
 
@@ -67,6 +106,8 @@ class MediaFileSerializer(
             "media_item",
             "title",
             "media_type",
+            "channel_id",
+            "channel_title",
             "relative_path",
             "file_name",
             "extension",

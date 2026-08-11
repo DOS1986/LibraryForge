@@ -58,6 +58,13 @@ type FilesView =
   | "flat"
 
 
+type LibraryAssetWithChannel =
+  LibraryAsset & {
+    channel_id?: string | null
+    channel_title?: string | null
+  }
+
+
 export function LibraryFilesPage() {
   const {
     library,
@@ -85,7 +92,7 @@ export function LibraryFilesPage() {
     assets,
     setAssets,
   ] = useState<
-    LibraryAsset[]
+    LibraryAssetWithChannel[]
   >([])
 
   const [
@@ -343,6 +350,20 @@ export function LibraryFilesPage() {
                       Path
                     </th>
 
+                    {
+                      library.content_type
+                      === "online_video"
+                      && (
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Channel
+                        </th>
+                      )
+                    }
+
                     <th
                       className="
                         p-3
@@ -400,6 +421,23 @@ export function LibraryFilesPage() {
                               asset.relative_path
                             }
                           </td>
+
+                          {
+                            library.content_type
+                            === "online_video"
+                            && (
+                              <td
+                                className="
+                                  p-3
+                                "
+                              >
+                                {
+                                  asset.channel_title
+                                  || "—"
+                                }
+                              </td>
+                            )
+                          }
 
                           <td
                             className="

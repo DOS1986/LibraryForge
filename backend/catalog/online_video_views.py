@@ -292,6 +292,7 @@ class OnlineVideoCatalogViewSet(viewsets.ReadOnlyModelViewSet):
         "storage_bytes",
         "version_count",
         "playlist_count",
+        "playlist_memberships__position",
         "created_at",
         "updated_at",
     ]

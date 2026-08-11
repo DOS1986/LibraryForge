@@ -806,8 +806,12 @@ export function FolderBrowser({
                           </div>
 
                           {
-                            entry.entry_type
-                            !== "folder"
+                            (
+                              entry.entry_type
+                              !== "folder"
+                              || entry.title
+                              !== entry.name
+                            )
                             && (
                               <div
                                 className="

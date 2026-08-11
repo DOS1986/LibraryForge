@@ -8,6 +8,7 @@ pre-1.0 development.
 ## [Unreleased]
 
 ### Added
+
 - Added first-class Channel, Online Video, Playlist, and Playlist Membership semantic models for online-video libraries.
 - Added TubeArchivist and yt-dlp online-video normalization with field provenance and manual-lock preservation.
 - Added stable provider/source identities for channels, videos, and playlists.
@@ -20,10 +21,18 @@ pre-1.0 development.
 - Added server-side pagination, search, sorting, and Channel/Playlist/provider/kind/date filtering for online-video catalogs.
 - Added channel display metadata, playlist membership and position data, present-version details, runtime totals, storage totals, and catalog counts to online-video API responses.
 - Added API regression coverage for ownership isolation, present-file filtering, aggregates, relationship serialization, filtering, and malformed query parameters.
-
+- Added first-class Online Video frontend catalog views for Channels, Playlists, and Videos.
+- Added Channel and Playlist detail dialogs with paginated video browsing and playlist-position ordering.
+- Added Online Video detail views with channel identity, provider/video IDs, tags, categories, playlist memberships, and present physical-version information.
+- Added human-readable Channel information to Online Video Media and Files views.
+  
 ### Changed
-- Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
 
+- Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
+- Online Video libraries now default the Media page to the semantic Catalog view.
+- TubeArchivist `UC...` root folders now display their resolved Channel name while retaining the original physical folder ID and path.
+- Media and unified file APIs now expose Channel identity/display fields for Online Video media.
+  
 ### Fixed
 
 ## [0.1.0-alpha.3] - Artwork Management and Application Housekeeping

@@ -1,7 +1,7 @@
 from pathlib import PurePosixPath
 
 from media.models import MediaFile
-from catalog.models import ArtworkFile
+from catalog.models import ArtworkFile, Channel
 from metadata.models import NfoFile
 
 
@@ -170,6 +170,7 @@ def _folder_entry(
     *,
     folder_name: str,
     folder_path: str,
+    folder_title: str | None = None,
 ):
     return {
         "entry_type":
@@ -179,7 +180,8 @@ def _folder_entry(
             folder_name,
 
         "title":
-            folder_name,
+            folder_title
+            or folder_name,
 
         "relative_path":
             folder_path,
@@ -318,6 +320,29 @@ def build_library_browser_entries(
     folders = {}
     direct_entries = []
 
+    channel_titles = {}
+    if (
+        not current_path
+        and getattr(
+            library,
+            "content_type",
+            "",
+        ) == "online_video"
+    ):
+        channel_titles = dict(
+            Channel.objects
+            .filter(
+                library=library,
+            )
+            .exclude(
+                source_id="",
+            )
+            .values_list(
+                "source_id",
+                "title",
+            )
+        )
+
     if include_media:
         media_queryset = (
             MediaFile.objects
@@ -374,6 +399,10 @@ def build_library_browser_entries(
                     _folder_entry(
                         folder_name=folder_name,
                         folder_path=folder_path,
+                        folder_title=(
+                            channel_titles
+                            .get(folder_name)
+                        ),
                     ),
                 )
 
@@ -526,6 +555,10 @@ def build_library_browser_entries(
                     _folder_entry(
                         folder_name=folder_name,
                         folder_path=folder_path,
+                        folder_title=(
+                            channel_titles
+                            .get(folder_name)
+                        ),
                     ),
                 )
 
@@ -680,6 +713,10 @@ def build_library_browser_entries(
                     _folder_entry(
                         folder_name=folder_name,
                         folder_path=folder_path,
+                        folder_title=(
+                            channel_titles
+                            .get(folder_name)
+                        ),
                     ),
                 )
 

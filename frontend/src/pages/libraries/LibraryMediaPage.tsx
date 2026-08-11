@@ -36,6 +36,10 @@ import {
 } from "@/components/catalog/SemanticCatalog"
 
 import {
+  OnlineVideoCatalog,
+} from "@/components/online-video/OnlineVideoCatalog"
+
+import {
   ScanPanel,
 } from "@/components/libraries/ScanPanel"
 
@@ -77,6 +81,13 @@ type MediaView =
   | "all"
 
 
+type MediaFileWithChannel =
+  MediaFile & {
+    channel_id?: string | null
+    channel_title?: string | null
+  }
+
+
 export function LibraryMediaPage() {
   const {
     library,
@@ -100,6 +111,7 @@ export function LibraryMediaPage() {
         "tv",
         "auto",
         "mixed",
+        "online_video",
       ].includes(
         library.content_type
       )
@@ -129,7 +141,7 @@ export function LibraryMediaPage() {
     files,
     setFiles,
   ] = useState<
-    MediaFile[]
+    MediaFileWithChannel[]
   >([])
 
   const [
@@ -401,11 +413,20 @@ export function LibraryMediaPage() {
                   mt-5
                 "
               >
-                <SemanticCatalog
-                  library={
-                    library
-                  }
-                />
+                {
+                  library.content_type
+                  === "online_video"
+                    ? (
+                      <OnlineVideoCatalog
+                        library={library}
+                      />
+                    )
+                    : (
+                      <SemanticCatalog
+                        library={library}
+                      />
+                    )
+                }
               </TabsContent>
 
               <TabsContent
@@ -491,6 +512,20 @@ export function LibraryMediaPage() {
                             }
                           />
                         </th>
+
+                        {
+                          library.content_type
+                          === "online_video"
+                          && (
+                            <th
+                              className="
+                                p-3
+                              "
+                            >
+                              Channel
+                            </th>
+                          )
+                        }
 
                         <th
                           className="
@@ -612,6 +647,23 @@ export function LibraryMediaPage() {
                                   }
                                 </div>
                               </td>
+
+                              {
+                                library.content_type
+                                === "online_video"
+                                && (
+                                  <td
+                                    className="
+                                      p-3
+                                    "
+                                  >
+                                    {
+                                      file.channel_title
+                                      || "—"
+                                    }
+                                  </td>
+                                )
+                              }
 
                               <td
                                 className="
