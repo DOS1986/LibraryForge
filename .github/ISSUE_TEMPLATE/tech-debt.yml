@@ -1,0 +1,40 @@
+name: Technical debt
+description: Track refactoring, reliability, maintenance, or architecture work.
+title: "[Tech Debt] "
+labels:
+  - "type: tech debt"
+  - "status: triage"
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current problem
+      description: What is fragile, duplicated, difficult to maintain, or likely to become a problem?
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What does this prevent or make harder?
+    validations:
+      required: true
+
+  - type: textarea
+    id: direction
+    attributes:
+      label: Suggested direction
+      description: Describe the preferred refactor or maintenance approach.
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk if deferred
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true

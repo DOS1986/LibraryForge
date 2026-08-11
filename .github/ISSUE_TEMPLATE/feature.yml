@@ -1,0 +1,57 @@
+name: Feature request
+description: Propose a new LibraryForge capability or product improvement.
+title: "[Feature] "
+labels:
+  - "type: feature"
+  - "status: triage"
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem should LibraryForge solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe what you would like LibraryForge to do.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Catalog / semantic matching
+        - Canonical metadata
+        - Artwork
+        - Online video / TubeArchivist
+        - Metadata providers
+        - Scanner / jobs
+        - NFO
+        - Files / storage
+        - Projections / outputs
+        - Safe library operations
+        - User settings / authentication
+        - System / deployment
+        - Frontend / UI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety or data-integrity considerations
+      description: Note any filesystem, metadata, privacy, security, or destructive-operation concerns.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. How are you solving this today?
