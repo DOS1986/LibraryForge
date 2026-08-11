@@ -16,7 +16,11 @@ pre-1.0 development.
 - Added a validated TubeArchivist archive-path identity fallback for online videos when embedded `ta` metadata and yt-dlp `.info.json` are unavailable.
 - Added standard embedded title, description, date, artist/channel, and genre fallbacks to online-video canonical metadata while preserving field provenance.
 - Added conflict detection between path-derived identities and explicit TubeArchivist/yt-dlp identities.
-  
+- Added authenticated read-only online-video catalog APIs for Channels, Playlists, and Videos.
+- Added server-side pagination, search, sorting, and Channel/Playlist/provider/kind/date filtering for online-video catalogs.
+- Added channel display metadata, playlist membership and position data, present-version details, runtime totals, storage totals, and catalog counts to online-video API responses.
+- Added API regression coverage for ownership isolation, present-file filtering, aggregates, relationship serialization, filtering, and malformed query parameters.
+
 ### Changed
 - Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
 

@@ -24,6 +24,12 @@ from catalog.editor_views import (
     series_editor,
 )
 
+from catalog.online_video_views import (
+    ChannelCatalogViewSet,
+    OnlineVideoCatalogViewSet,
+    PlaylistCatalogViewSet,
+)
+
 from catalog.views import (
     EpisodeCatalogViewSet,
     MovieCatalogViewSet,
@@ -93,6 +99,24 @@ router.register(
     "catalog-episodes",
     EpisodeCatalogViewSet,
     basename="catalog-episode",
+)
+
+router.register(
+    "catalog-channels",
+    ChannelCatalogViewSet,
+    basename="catalog-channel",
+)
+
+router.register(
+    "catalog-playlists",
+    PlaylistCatalogViewSet,
+    basename="catalog-playlist",
+)
+
+router.register(
+    "catalog-online-videos",
+    OnlineVideoCatalogViewSet,
+    basename="catalog-online-video",
 )
 
 router.register(
