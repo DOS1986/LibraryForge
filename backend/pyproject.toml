@@ -13,7 +13,7 @@ dependencies = [
     "django-environ>=0.12,<1",
     "django-filter>=25,<26",
     "djangorestframework>=3.16,<4",
-    "psycopg[binary]>=3.2,<4",
+    "psycopg[binary]>=3.3.4,<4",
 ]
 
 [project.scripts]
