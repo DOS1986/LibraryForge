@@ -351,6 +351,397 @@ class MediaVersion(models.Model):
         )
 
 
+class Channel(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    library = models.ForeignKey(
+        "libraries.Library",
+        on_delete=models.CASCADE,
+        related_name="channels",
+    )
+
+    provider = models.CharField(
+        max_length=64,
+        db_index=True,
+    )
+
+    source_id = models.CharField(
+        max_length=255,
+    )
+
+    semantic_key = models.CharField(
+        max_length=1024,
+        db_index=True,
+    )
+
+    title = models.CharField(
+        max_length=1024,
+    )
+
+    sort_title = models.CharField(
+        max_length=1024,
+        blank=True,
+        default="",
+    )
+
+    handle = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    description = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    source_url = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    external_ids = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    canonical_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    locked = models.BooleanField(
+        default=False,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "sort_title",
+            "title",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "library",
+                    "provider",
+                    "source_id",
+                ],
+                name="unique_library_channel_source",
+            )
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class OnlineVideo(models.Model):
+    class VideoKind(models.TextChoices):
+        VIDEO = (
+            "video",
+            "Video",
+        )
+        SHORT = (
+            "short",
+            "Short",
+        )
+        STREAM = (
+            "stream",
+            "Stream",
+        )
+        UNKNOWN = (
+            "unknown",
+            "Unknown",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    library = models.ForeignKey(
+        "libraries.Library",
+        on_delete=models.CASCADE,
+        related_name="online_videos",
+    )
+
+    media_item = models.OneToOneField(
+        "media.MediaItem",
+        on_delete=models.CASCADE,
+        related_name="online_video",
+    )
+
+    channel = models.ForeignKey(
+        Channel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="videos",
+    )
+
+    provider = models.CharField(
+        max_length=64,
+        db_index=True,
+    )
+
+    source_id = models.CharField(
+        max_length=255,
+    )
+
+    source_url = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    upload_date = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    video_kind = models.CharField(
+        max_length=32,
+        choices=VideoKind.choices,
+        default=VideoKind.UNKNOWN,
+        db_index=True,
+    )
+
+    tags = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    categories = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    external_ids = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    canonical_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    locked = models.BooleanField(
+        default=False,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "-upload_date",
+            "source_id",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "library",
+                    "provider",
+                    "source_id",
+                ],
+                name="unique_library_online_video_source",
+            )
+        ]
+
+    def __str__(self):
+        return self.media_item.title
+
+
+class Playlist(models.Model):
+    class PlaylistKind(models.TextChoices):
+        REMOTE = (
+            "remote",
+            "Remote",
+        )
+        CUSTOM = (
+            "custom",
+            "Custom",
+        )
+        UNKNOWN = (
+            "unknown",
+            "Unknown",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    library = models.ForeignKey(
+        "libraries.Library",
+        on_delete=models.CASCADE,
+        related_name="playlists",
+    )
+
+    channel = models.ForeignKey(
+        Channel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="playlists",
+    )
+
+    provider = models.CharField(
+        max_length=64,
+        db_index=True,
+    )
+
+    source_id = models.CharField(
+        max_length=255,
+    )
+
+    semantic_key = models.CharField(
+        max_length=1024,
+        db_index=True,
+    )
+
+    title = models.CharField(
+        max_length=1024,
+    )
+
+    description = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    source_url = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    playlist_kind = models.CharField(
+        max_length=32,
+        choices=PlaylistKind.choices,
+        default=PlaylistKind.UNKNOWN,
+    )
+
+    external_ids = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    canonical_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    locked = models.BooleanField(
+        default=False,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "title",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "library",
+                    "provider",
+                    "source_id",
+                ],
+                name="unique_library_playlist_source",
+            )
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class PlaylistMembership(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    playlist = models.ForeignKey(
+        Playlist,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+
+    online_video = models.ForeignKey(
+        OnlineVideo,
+        on_delete=models.CASCADE,
+        related_name="playlist_memberships",
+    )
+
+    position = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "position",
+            "created_at",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "playlist",
+                    "online_video",
+                ],
+                name="unique_playlist_online_video",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.playlist.title}: "
+            f"{self.online_video.media_item.title}"
+        )
+
+
 class SemanticMatch(models.Model):
     class Status(models.TextChoices):
         MATCHED = (
@@ -392,6 +783,21 @@ class SemanticMatch(models.Model):
         MANUAL = (
             "manual",
             "Manual",
+        )
+
+        TUBEARCHIVIST = (
+            "tubearchivist",
+            "TubeArchivist",
+        )
+
+        TUBEARCHIVIST_PATH = (
+            "tubearchivist_path",
+            "TubeArchivist Path",
+        )
+
+        YT_DLP = (
+            "yt_dlp",
+            "yt-dlp",
         )
 
     id = models.UUIDField(
@@ -482,6 +888,21 @@ class CanonicalFieldState(models.Model):
             "Media Version",
         )
 
+        CHANNEL = (
+            "channel",
+            "Channel",
+        )
+
+        ONLINE_VIDEO = (
+            "online_video",
+            "Online Video",
+        )
+
+        PLAYLIST = (
+            "playlist",
+            "Playlist",
+        )
+
     class Source(models.TextChoices):
         MANUAL = (
             "manual",
@@ -516,6 +937,11 @@ class CanonicalFieldState(models.Model):
         TUBEARCHIVIST = (
             "tubearchivist",
             "TubeArchivist",
+        )
+
+        TUBEARCHIVIST_PATH = (
+            "tubearchivist_path",
+            "TubeArchivist Path",
         )
 
         YT_DLP = (

@@ -1231,6 +1231,15 @@ def resolve_library_semantics(
     *,
     library,
 ):
+    if library.content_type == "online_video":
+        from catalog.services.online_video import (
+            resolve_online_video_library,
+        )
+
+        return resolve_online_video_library(
+            library=library
+        )
+
     if (
         library.content_type
         not in {

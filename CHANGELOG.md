@@ -8,8 +8,17 @@ pre-1.0 development.
 ## [Unreleased]
 
 ### Added
-
+- Added first-class Channel, Online Video, Playlist, and Playlist Membership semantic models for online-video libraries.
+- Added TubeArchivist and yt-dlp online-video normalization with field provenance and manual-lock preservation.
+- Added stable provider/source identities for channels, videos, and playlists.
+- Added online-video semantic match, unresolved, and conflict handling using the existing SemanticMatch system.
+- Added regression coverage for TubeArchivist precedence, yt-dlp fallback, playlist membership, source conflicts, idempotent rebuilds, and manual metadata locks.
+- Added a validated TubeArchivist archive-path identity fallback for online videos when embedded `ta` metadata and yt-dlp `.info.json` are unavailable.
+- Added standard embedded title, description, date, artist/channel, and genre fallbacks to online-video canonical metadata while preserving field provenance.
+- Added conflict detection between path-derived identities and explicit TubeArchivist/yt-dlp identities.
+  
 ### Changed
+- Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
 
 ### Fixed
 

@@ -193,6 +193,17 @@ def inspect_metadata_sources(
                     "synopsis",
                 ),
 
+            "artist":
+                _tag_value(
+                    format_tags,
+                    "artist",
+                    "album_artist",
+                    "albumartist",
+                    "channel",
+                    "channel_name",
+                    "uploader",
+                ),
+
             "date":
                 _tag_value(
                     format_tags,
