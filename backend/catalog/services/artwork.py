@@ -10,9 +10,14 @@ from django.utils import timezone
 
 from catalog.models import (
     ArtworkFile,
+    Channel,
     Episode,
     MediaVersion,
     MetadataChangeSet,
+    OnlineVideo,
+    Playlist,
+    Season,
+    Series,
 )
 from libraries.services.storage import validate_storage_path
 from media.models import MediaItem
@@ -62,6 +67,56 @@ ARTWORK_RULES = {
         "thumb": 10,
         "landscape": 20,
     },
+}
+
+TARGET_ARTWORK_TYPES = {
+    ArtworkFile.TargetType.MEDIA_ITEM: {
+        "primary",
+        "backdrop",
+        "banner",
+        "logo",
+        "thumb",
+    },
+    ArtworkFile.TargetType.SERIES: {
+        "primary",
+        "backdrop",
+        "banner",
+        "logo",
+        "thumb",
+    },
+    ArtworkFile.TargetType.SEASON: {
+        "primary",
+        "backdrop",
+        "banner",
+        "logo",
+        "thumb",
+    },
+    ArtworkFile.TargetType.EPISODE: {
+        "primary",
+    },
+    ArtworkFile.TargetType.CHANNEL: {
+        "primary",
+        "backdrop",
+        "banner",
+        "logo",
+        "thumb",
+    },
+    ArtworkFile.TargetType.PLAYLIST: {
+        "primary",
+        "backdrop",
+        "thumb",
+    },
+}
+
+EMBEDDED_ARTWORK_PREFIX = "@embedded/"
+
+SOURCE_PRIORITY = {
+    "video-thumb": 5,
+    "channel-art": 5,
+    "playlist-art": 5,
+    "embedded-cover": 60,
+    "embedded-channel": 60,
+    "embedded-playlist": 60,
 }
 
 
@@ -129,13 +184,49 @@ def _priority(artwork: ArtworkFile):
         {},
     )
 
-    return (
+    priority = SOURCE_PRIORITY.get(
+        artwork.source_name,
         rules.get(
             artwork.source_name,
             999,
         ),
+    )
+
+    return (
+        priority,
         artwork.relative_path.casefold(),
     )
+
+
+def is_embedded_artwork_path(relative_path: str):
+    return (relative_path or "").startswith(
+        EMBEDDED_ARTWORK_PREFIX
+    )
+
+
+def embedded_artwork_locator(relative_path: str):
+    if not is_embedded_artwork_path(relative_path):
+        return None
+
+    parts = relative_path.split("/")
+    if len(parts) != 3:
+        return None
+
+    media_file_id = parts[1]
+    stream_part = parts[2]
+
+    if "." in stream_part:
+        stream_part = stream_part.split(".", 1)[0]
+
+    try:
+        stream_index = int(stream_part)
+    except (TypeError, ValueError):
+        return None
+
+    if stream_index < 0:
+        return None
+
+    return media_file_id, stream_index
 
 
 def serialize_artwork(artwork: ArtworkFile):
@@ -147,6 +238,11 @@ def serialize_artwork(artwork: ArtworkFile):
         "artwork_type": artwork.artwork_type,
         "artwork_type_label": artwork.get_artwork_type_display(),
         "source_name": artwork.source_name,
+        "source_kind": (
+            "embedded"
+            if is_embedded_artwork_path(artwork.relative_path)
+            else "filesystem"
+        ),
         "relative_path": artwork.relative_path,
         "file_name": artwork.file_name,
         "extension": artwork.extension,
@@ -186,6 +282,8 @@ def _build_location_index(library):
     series_dirs = defaultdict(list)
     season_dirs = defaultdict(list)
     episode_stems = defaultdict(list)
+    online_video_stems = defaultdict(list)
+    channel_dirs = defaultdict(list)
 
     movie_versions = (
         MediaVersion.objects
@@ -280,6 +378,58 @@ def _build_location_index(library):
                     episode.season.series_id
                 )
 
+    online_videos = (
+        OnlineVideo.objects
+        .filter(
+            library=library,
+            media_item__versions__media_file__is_present=True,
+        )
+        .select_related(
+            "media_item",
+            "channel",
+        )
+        .prefetch_related(
+            "media_item__versions__media_file",
+        )
+        .distinct()
+    )
+
+    for online_video in online_videos:
+        for version in online_video.media_item.versions.all():
+            media_file = version.media_file
+
+            if not media_file.is_present:
+                continue
+
+            path = PurePosixPath(
+                media_file.relative_path
+            )
+            parent = path.parent.as_posix()
+
+            online_video_stems[parent].append(
+                (
+                    _normalized_stem(path.stem),
+                    online_video.media_item_id,
+                )
+            )
+
+            if online_video.channel_id:
+                channel_dirs[parent].append(
+                    online_video.channel_id
+                )
+
+    channels_by_source = {
+        channel.source_id.casefold(): channel.id
+        for channel in Channel.objects.filter(library=library)
+        if channel.source_id
+    }
+
+    playlists_by_source = {
+        playlist.source_id.casefold(): playlist.id
+        for playlist in Playlist.objects.filter(library=library)
+        if playlist.source_id
+    }
+
     def unique_map(values):
         result = {}
 
@@ -298,6 +448,10 @@ def _build_location_index(library):
         "series_dirs": unique_map(series_dirs),
         "season_dirs": unique_map(season_dirs),
         "episode_stems": episode_stems,
+        "online_video_stems": online_video_stems,
+        "channel_dirs": unique_map(channel_dirs),
+        "channels_by_source": channels_by_source,
+        "playlists_by_source": playlists_by_source,
     }
 
 
@@ -329,6 +483,76 @@ def _episode_target(
     return None
 
 
+def _online_video_target(
+    *,
+    parent: str,
+    stem: str,
+    index,
+):
+    normalized = _normalized_stem(stem)
+
+    for media_stem, media_item_id in index[
+        "online_video_stems"
+    ].get(parent, []):
+        candidates = {
+            media_stem,
+            f"{media_stem}-thumb",
+            f"{media_stem}_thumb",
+            f"{media_stem}.thumb",
+            f"{media_stem}-thumbnail",
+            f"{media_stem}_thumbnail",
+        }
+
+        if normalized in candidates:
+            return (
+                ArtworkFile.TargetType.MEDIA_ITEM,
+                media_item_id,
+                ArtworkFile.ArtworkType.PRIMARY,
+                "video-thumb",
+            )
+
+    return None
+
+
+def _source_id_target(
+    *,
+    stem: str,
+    source_map,
+    target_type: str,
+    source_name: str,
+):
+    normalized = _normalized_stem(stem)
+
+    suffixes = (
+        "-thumb",
+        "_thumb",
+        ".thumb",
+        "-thumbnail",
+        "_thumbnail",
+        "-poster",
+        "_poster",
+    )
+
+    candidates = [normalized]
+    for suffix in suffixes:
+        if normalized.endswith(suffix):
+            candidates.append(
+                normalized[: -len(suffix)]
+            )
+
+    for candidate in candidates:
+        target_id = source_map.get(candidate)
+        if target_id:
+            return (
+                target_type,
+                target_id,
+                ArtworkFile.ArtworkType.PRIMARY,
+                source_name,
+            )
+
+    return None
+
+
 def classify_artwork_path(
     *,
     relative_path: str,
@@ -349,6 +573,35 @@ def classify_artwork_path(
     if episode:
         return episode
 
+    online_video = _online_video_target(
+        parent=parent,
+        stem=path.stem,
+        index=index,
+    )
+
+    if online_video:
+        return online_video
+
+    playlist = _source_id_target(
+        stem=path.stem,
+        source_map=index["playlists_by_source"],
+        target_type=ArtworkFile.TargetType.PLAYLIST,
+        source_name="playlist-art",
+    )
+
+    if playlist:
+        return playlist
+
+    channel_by_id = _source_id_target(
+        stem=path.stem,
+        source_map=index["channels_by_source"],
+        target_type=ArtworkFile.TargetType.CHANNEL,
+        source_name="channel-art",
+    )
+
+    if channel_by_id:
+        return channel_by_id
+
     token = _artwork_token(
         path.stem
     )
@@ -359,6 +612,16 @@ def classify_artwork_path(
 
     if not artwork_type:
         return None
+
+    if parent in index[
+        "channel_dirs"
+    ]:
+        return (
+            ArtworkFile.TargetType.CHANNEL,
+            index["channel_dirs"][parent],
+            artwork_type,
+            token or "channel-art",
+        )
 
     if parent in index[
         "season_dirs"
@@ -417,6 +680,184 @@ def discover_artwork_candidates(root: Path):
     )
 
     return candidates, errors
+
+
+def _stream_is_attached_picture(stream):
+    disposition = stream.get("disposition") or {}
+    value = disposition.get("attached_pic")
+
+    return value in (1, "1", True)
+
+
+def _embedded_artwork_type(label: str):
+    normalized = (label or "").casefold()
+
+    if "banner" in normalized:
+        return ArtworkFile.ArtworkType.BANNER
+    if any(
+        token in normalized
+        for token in ("backdrop", "background", "fanart")
+    ):
+        return ArtworkFile.ArtworkType.BACKDROP
+    if "logo" in normalized:
+        return ArtworkFile.ArtworkType.LOGO
+    if "thumb" in normalized or "landscape" in normalized:
+        return ArtworkFile.ArtworkType.THUMB
+
+    return ArtworkFile.ArtworkType.PRIMARY
+
+
+def _embedded_stream_label(stream):
+    tags = stream.get("tags") or {}
+    values = []
+
+    for key in (
+        "title",
+        "comment",
+        "description",
+        "handler_name",
+        "filename",
+        "name",
+    ):
+        value = tags.get(key)
+        if value:
+            values.append(str(value))
+
+    return " ".join(values).strip()
+
+
+def _embedded_playlist_target(online_video, label: str):
+    memberships = list(
+        online_video.playlist_memberships.all()
+    )
+
+    normalized = (label or "").casefold()
+
+    for membership in memberships:
+        playlist = membership.playlist
+        if (
+            playlist.source_id
+            and playlist.source_id.casefold() in normalized
+        ):
+            return playlist.id
+
+        title = (playlist.title or "").strip().casefold()
+        if title and len(title) >= 4 and title in normalized:
+            return playlist.id
+
+    if "playlist" in normalized and len(memberships) == 1:
+        return memberships[0].playlist_id
+
+    return None
+
+
+def discover_embedded_artwork_candidates(library):
+    candidates = []
+
+    online_videos = (
+        OnlineVideo.objects
+        .filter(
+            library=library,
+            media_item__versions__media_file__is_present=True,
+        )
+        .select_related(
+            "media_item",
+            "channel",
+        )
+        .prefetch_related(
+            "media_item__versions__media_file",
+            "playlist_memberships__playlist",
+        )
+        .distinct()
+    )
+
+    for online_video in online_videos:
+        versions = [
+            version
+            for version in online_video.media_item.versions.all()
+            if version.media_file.is_present
+        ]
+
+        if not versions:
+            continue
+
+        versions.sort(
+            key=lambda version: (
+                not version.is_primary,
+                str(version.id),
+            )
+        )
+
+        media_file = versions[0].media_file
+        raw_probe = media_file.raw_probe or {}
+        streams = raw_probe.get("streams") or []
+
+        for stream in streams:
+            if not isinstance(stream, dict):
+                continue
+
+            if not _stream_is_attached_picture(stream):
+                continue
+
+            stream_index = stream.get("index")
+
+            try:
+                stream_index = int(stream_index)
+            except (TypeError, ValueError):
+                continue
+
+            if stream_index < 0:
+                continue
+
+            label = _embedded_stream_label(stream)
+            normalized_label = label.casefold()
+            artwork_type = _embedded_artwork_type(label)
+
+            target_type = ArtworkFile.TargetType.MEDIA_ITEM
+            target_id = online_video.media_item_id
+            source_name = "embedded-cover"
+
+            playlist_id = _embedded_playlist_target(
+                online_video,
+                label,
+            )
+
+            if playlist_id:
+                target_type = ArtworkFile.TargetType.PLAYLIST
+                target_id = playlist_id
+                source_name = "embedded-playlist"
+
+            elif (
+                online_video.channel_id
+                and "channel" in normalized_label
+            ):
+                target_type = ArtworkFile.TargetType.CHANNEL
+                target_id = online_video.channel_id
+                source_name = "embedded-channel"
+
+            virtual_path = (
+                f"{EMBEDDED_ARTWORK_PREFIX}"
+                f"{media_file.id}/{stream_index}.png"
+            )
+
+            candidates.append(
+                {
+                    "relative_path": virtual_path,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "artwork_type": artwork_type,
+                    "source_name": source_name,
+                    "file_name": (
+                        f"{online_video.source_id or media_file.id}"
+                        f"-embedded-{stream_index}.png"
+                    ),
+                    "extension": "png",
+                    "size_bytes": 0,
+                    "modified_ns": media_file.modified_ns,
+                }
+            )
+
+    return candidates
 
 
 def _ensure_selected_artwork(library):
@@ -545,12 +986,6 @@ def sync_artwork_candidates(
 
             changed = False
 
-            classification_changed = (
-                artwork.target_type != target_type
-                or artwork.target_id != target_id
-                or artwork.artwork_type != artwork_type
-            )
-
             values = {
                 "target_type": target_type,
                 "target_id": target_id,
@@ -568,9 +1003,6 @@ def sync_artwork_candidates(
                 "last_seen_at": scan_time,
             }
 
-            if classification_changed and artwork.is_selected:
-                values["is_selected"] = False
-
             for field_name, value in values.items():
                 if getattr(artwork, field_name) != value:
                     setattr(artwork, field_name, value)
@@ -587,6 +1019,57 @@ def sync_artwork_candidates(
                     "error": str(exc),
                 }
             )
+
+    for candidate in discover_embedded_artwork_candidates(
+        library
+    ):
+        relative_path = candidate["relative_path"]
+        seen_paths.add(relative_path)
+
+        artwork = existing.get(relative_path)
+
+        if artwork is None:
+            artwork = ArtworkFile.objects.create(
+                library=library,
+                target_type=candidate["target_type"],
+                target_id=candidate["target_id"],
+                artwork_type=candidate["artwork_type"],
+                source_name=candidate["source_name"],
+                relative_path=relative_path,
+                file_name=candidate["file_name"],
+                extension=candidate["extension"],
+                size_bytes=candidate["size_bytes"],
+                modified_ns=candidate["modified_ns"],
+                is_present=True,
+                last_seen_at=scan_time,
+            )
+
+            existing[relative_path] = artwork
+            created += 1
+            continue
+
+        changed = False
+        values = {
+            "target_type": candidate["target_type"],
+            "target_id": candidate["target_id"],
+            "artwork_type": candidate["artwork_type"],
+            "source_name": candidate["source_name"],
+            "file_name": candidate["file_name"],
+            "extension": candidate["extension"],
+            "size_bytes": candidate["size_bytes"],
+            "modified_ns": candidate["modified_ns"],
+            "is_present": True,
+            "last_seen_at": scan_time,
+        }
+
+        for field_name, value in values.items():
+            if getattr(artwork, field_name) != value:
+                setattr(artwork, field_name, value)
+                changed = True
+
+        if changed:
+            artwork.save()
+            updated += 1
 
     if reconcile_missing:
         missing = (

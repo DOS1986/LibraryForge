@@ -9,31 +9,53 @@ pre-1.0 development.
 
 ### Added
 
-- Added first-class Channel, Online Video, Playlist, and Playlist Membership semantic models for online-video libraries.
-- Added TubeArchivist and yt-dlp online-video normalization with field provenance and manual-lock preservation.
-- Added stable provider/source identities for channels, videos, and playlists.
-- Added online-video semantic match, unresolved, and conflict handling using the existing SemanticMatch system.
-- Added regression coverage for TubeArchivist precedence, yt-dlp fallback, playlist membership, source conflicts, idempotent rebuilds, and manual metadata locks.
-- Added a validated TubeArchivist archive-path identity fallback for online videos when embedded `ta` metadata and yt-dlp `.info.json` are unavailable.
-- Added standard embedded title, description, date, artist/channel, and genre fallbacks to online-video canonical metadata while preserving field provenance.
-- Added conflict detection between path-derived identities and explicit TubeArchivist/yt-dlp identities.
-- Added authenticated read-only online-video catalog APIs for Channels, Playlists, and Videos.
-- Added server-side pagination, search, sorting, and Channel/Playlist/provider/kind/date filtering for online-video catalogs.
-- Added channel display metadata, playlist membership and position data, present-version details, runtime totals, storage totals, and catalog counts to online-video API responses.
-- Added API regression coverage for ownership isolation, present-file filtering, aggregates, relationship serialization, filtering, and malformed query parameters.
-- Added first-class Online Video frontend catalog views for Channels, Playlists, and Videos.
-- Added Channel and Playlist detail dialogs with paginated video browsing and playlist-position ordering.
-- Added Online Video detail views with channel identity, provider/video IDs, tags, categories, playlist memberships, and present physical-version information.
-- Added human-readable Channel information to Online Video Media and Files views.
-  
+* Added first-class Channel, Online Video, Playlist, and Playlist Membership semantic models for online-video libraries.
+* Added TubeArchivist and yt-dlp online-video normalization with field provenance and manual-lock preservation.
+* Added stable provider/source identities for channels, videos, and playlists.
+* Added online-video semantic match, unresolved, and conflict handling using the existing SemanticMatch system.
+* Added regression coverage for TubeArchivist precedence, yt-dlp fallback, playlist membership, source conflicts, idempotent rebuilds, and manual metadata locks.
+* Added a validated TubeArchivist archive-path identity fallback for online videos when embedded `ta` metadata and yt-dlp `.info.json` are unavailable.
+* Added standard embedded title, description, date, artist/channel, and genre fallbacks to online-video canonical metadata while preserving field provenance.
+* Added conflict detection between path-derived identities and explicit TubeArchivist/yt-dlp identities.
+* Added authenticated read-only online-video catalog APIs for Channels, Playlists, and Videos.
+* Added server-side pagination, search, sorting, and Channel/Playlist/provider/kind/date filtering for online-video catalogs.
+* Added channel display metadata, playlist membership and position data, present-version details, runtime totals, storage totals, and catalog counts to online-video API responses.
+* Added API regression coverage for ownership isolation, present-file filtering, aggregates, relationship serialization, filtering, and malformed query parameters.
+* Added first-class Online Video frontend catalog views for Channels, Playlists, and Videos.
+* Added Channel and Playlist detail dialogs with paginated video browsing and playlist-position ordering.
+* Added Online Video detail views with channel identity, provider/video IDs, tags, categories, playlist memberships, and present physical-version information.
+* Added human-readable Channel information to Online Video Media and Files views.
+* Added Online Video artwork previews for Channels, Playlists, and Videos.
+* Added local adjacent-thumbnail recognition for online videos plus Channel and Playlist artwork association.
+* Added indexing and authenticated on-demand preview of embedded attached artwork without writing extracted image files.
+* Added preferred artwork URLs and local artwork refresh controls to the Online Video catalog.
+* Added a reusable integration framework for metadata, artwork, catalog, and output providers.
+* Added global integration management and per-library integration assignments with provider capability and priority configuration.
+* Added encrypted server-side storage for user-supplied integration credentials without returning stored secrets to the frontend.
+* Added support for credential-free, user-supplied, application-managed, and hybrid integration credential models.
+* Added TubeArchivist as an Online Video integration using network-based API access without requiring a shared filesystem or colocated container.
+* Added YouTube Data API integration for metadata and artwork enrichment of existing Channels, Playlists, and Videos.
+* Added integration connection testing and provider capability/status information.
+* Added secure integration-provided artwork proxying with provider fallback and origin validation.
+* Added batched Online Video provider lookups and short-lived caching to reduce external metadata API requests.
+* Added public integration architecture documentation for current and future LibraryForge providers.
+
 ### Changed
 
-- Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
-- Online Video libraries now default the Media page to the semantic Catalog view.
-- TubeArchivist `UC...` root folders now display their resolved Channel name while retaining the original physical folder ID and path.
-- Media and unified file APIs now expose Channel identity/display fields for Online Video media.
-  
-### Fixed
+* Online Video libraries now build a semantic catalog from already-indexed TubeArchivist and yt-dlp metadata during the normal scan semantic-resolution stage.
+* Online Video libraries now default the Media page to the semantic Catalog view.
+* TubeArchivist `UC...` root folders now display their resolved Channel name while retaining the original physical folder ID and path.
+* Media and unified file APIs now expose Channel identity/display fields for Online Video media.
+* Online Video Channel, Playlist, Video, and related-video views now display preferred artwork when available.
+* Virtual embedded artwork is excluded from physical Files listings and physical file/storage totals.
+* Automatic artwork selection prefers filesystem sidecars over embedded artwork when no preferred selection already exists.
+* Online Video artwork can now fall back to assigned integrations when local or embedded artwork is unavailable.
+* TubeArchivist enrichment no longer assumes LibraryForge and TubeArchivist share a filesystem namespace.
+* Integration providers now declare their credential ownership model instead of assuming all external services require user-supplied credentials.
+* Application-managed integration credentials are resolved only on the server and are not stored in per-user connection configuration.
+* The integration provider registry remains code-driven so future providers can be added without database schema changes solely to register a provider.
+* LibraryForge integrations are explicitly limited to metadata, artwork, catalog, and output capabilities; media acquisition and download automation remain outside the product scope.
+
 
 ## [0.1.0-alpha.3] - Artwork Management and Application Housekeeping
 

@@ -44,6 +44,10 @@ import {
 } from "@/pages/SettingsPage"
 
 import {
+  IntegrationsPage,
+} from "@/pages/IntegrationsPage"
+
+import {
   SystemStatusPage,
 } from "@/pages/SystemStatusPage"
 
@@ -190,6 +194,11 @@ function App() {
             <Route
               path="settings"
               element={<SettingsPage />}
+            />
+
+            <Route
+              path="settings/integrations"
+              element={<IntegrationsPage />}
             />
 
             <Route

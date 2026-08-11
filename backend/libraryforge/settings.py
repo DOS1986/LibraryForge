@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "outputs",
     "operations",
     "preferences",
+    "integrations",
     "jobs",
 ]
 

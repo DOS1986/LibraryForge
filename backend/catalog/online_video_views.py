@@ -2,6 +2,7 @@ from uuid import UUID
 
 from django.db.models import (
     BigIntegerField,
+    Case,
     Count,
     FloatField,
     IntegerField,
@@ -12,6 +13,7 @@ from django.db.models import (
     Subquery,
     Sum,
     Value,
+    When,
 )
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
@@ -20,6 +22,7 @@ from rest_framework import filters, permissions, viewsets
 from rest_framework.exceptions import ValidationError
 
 from catalog.models import (
+    ArtworkFile,
     Channel,
     MediaVersion,
     OnlineVideo,
@@ -31,6 +34,7 @@ from catalog.online_video_serializers import (
     OnlineVideoCatalogSerializer,
     PlaylistCatalogSerializer,
 )
+from integrations.services import apply_artwork_fallbacks
 from libraryforge.pagination import LibraryForgePagination
 
 
@@ -49,6 +53,42 @@ PLAYLIST_PRIMARY_PRESENT_VERSION_FILTER = Q(
     memberships__online_video__media_item__versions__is_primary=True,
     memberships__online_video__media_item__versions__media_file__is_present=True,
 )
+
+
+def _artwork_id_subquery(target_type, outer_field="pk"):
+    return (
+        ArtworkFile.objects
+        .filter(
+            target_type=target_type,
+            target_id=OuterRef(outer_field),
+            is_present=True,
+            is_selected=True,
+        )
+        .annotate(
+            artwork_rank=Case(
+                When(
+                    artwork_type=ArtworkFile.ArtworkType.PRIMARY,
+                    then=Value(0),
+                ),
+                When(
+                    artwork_type=ArtworkFile.ArtworkType.THUMB,
+                    then=Value(1),
+                ),
+                When(
+                    artwork_type=ArtworkFile.ArtworkType.BACKDROP,
+                    then=Value(2),
+                ),
+                When(
+                    artwork_type=ArtworkFile.ArtworkType.BANNER,
+                    then=Value(3),
+                ),
+                default=Value(4),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("artwork_rank", "relative_path")
+        .values("id")[:1]
+    )
 
 
 def _query_param(request, name):
@@ -95,7 +135,46 @@ def _choice_query_param(request, name, valid_values):
 
 
 
-class ChannelCatalogViewSet(viewsets.ReadOnlyModelViewSet):
+class IntegrationArtworkMixin:
+    integration_target_type = ""
+
+    def _apply_integration_artwork(self, response):
+        data = response.data
+        if isinstance(data, dict):
+            rows = data.get("results")
+            if isinstance(rows, list):
+                apply_artwork_fallbacks(
+                    user=self.request.user,
+                    rows=rows,
+                    target_type=self.integration_target_type,
+                )
+            elif data.get("source_id"):
+                apply_artwork_fallbacks(
+                    user=self.request.user,
+                    rows=[data],
+                    target_type=self.integration_target_type,
+                )
+        elif isinstance(data, list):
+            apply_artwork_fallbacks(
+                user=self.request.user,
+                rows=data,
+                target_type=self.integration_target_type,
+            )
+        return response
+
+    def list(self, request, *args, **kwargs):
+        return self._apply_integration_artwork(
+            super().list(request, *args, **kwargs)
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        return self._apply_integration_artwork(
+            super().retrieve(request, *args, **kwargs)
+        )
+
+
+class ChannelCatalogViewSet(IntegrationArtworkMixin, viewsets.ReadOnlyModelViewSet):
+    integration_target_type = "channel"
     serializer_class = ChannelCatalogSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = LibraryForgePagination
@@ -133,6 +212,9 @@ class ChannelCatalogViewSet(viewsets.ReadOnlyModelViewSet):
                 videos__media_item__versions__media_file__is_present=True,
             )
             .annotate(
+                artwork_id=Subquery(
+                    _artwork_id_subquery(ArtworkFile.TargetType.CHANNEL)
+                ),
                 video_count=Count(
                     "videos",
                     filter=PRESENT_VERSION_FILTER,
@@ -173,7 +255,8 @@ class ChannelCatalogViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-class PlaylistCatalogViewSet(viewsets.ReadOnlyModelViewSet):
+class PlaylistCatalogViewSet(IntegrationArtworkMixin, viewsets.ReadOnlyModelViewSet):
+    integration_target_type = "playlist"
     serializer_class = PlaylistCatalogSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = LibraryForgePagination
@@ -213,6 +296,9 @@ class PlaylistCatalogViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .select_related("channel")
             .annotate(
+                artwork_id=Subquery(
+                    _artwork_id_subquery(ArtworkFile.TargetType.PLAYLIST)
+                ),
                 video_count=Count(
                     "memberships__online_video",
                     filter=PLAYLIST_PRESENT_VERSION_FILTER,
@@ -262,7 +348,8 @@ class PlaylistCatalogViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-class OnlineVideoCatalogViewSet(viewsets.ReadOnlyModelViewSet):
+class OnlineVideoCatalogViewSet(IntegrationArtworkMixin, viewsets.ReadOnlyModelViewSet):
+    integration_target_type = "online_video"
     serializer_class = OnlineVideoCatalogSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = LibraryForgePagination
@@ -347,6 +434,12 @@ class OnlineVideoCatalogViewSet(viewsets.ReadOnlyModelViewSet):
                 ),
             )
             .annotate(
+                artwork_id=Subquery(
+                    _artwork_id_subquery(
+                        ArtworkFile.TargetType.MEDIA_ITEM,
+                        outer_field="media_item_id",
+                    )
+                ),
                 version_count=Count(
                     "media_item__versions",
                     filter=present_filter,

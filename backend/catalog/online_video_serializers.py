@@ -8,6 +8,14 @@ from catalog.models import (
 )
 
 
+def _artwork_url(obj):
+    artwork_id = getattr(obj, "artwork_id", None)
+    if not artwork_id:
+        return None
+
+    return f"/api/artwork-files/{artwork_id}/content/"
+
+
 class OnlineVideoVersionSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
@@ -70,6 +78,10 @@ class ChannelCatalogSerializer(serializers.ModelSerializer):
     runtime_seconds = serializers.FloatField(read_only=True)
     storage_bytes = serializers.IntegerField(read_only=True)
     last_upload_date = serializers.DateField(read_only=True, allow_null=True)
+    artwork_url = serializers.SerializerMethodField()
+
+    def get_artwork_url(self, obj):
+        return _artwork_url(obj)
 
     class Meta:
         model = Channel
@@ -91,12 +103,14 @@ class ChannelCatalogSerializer(serializers.ModelSerializer):
             "runtime_seconds",
             "storage_bytes",
             "last_upload_date",
+            "artwork_url",
             "created_at",
             "updated_at",
         ]
 
 
 class PlaylistCatalogSerializer(serializers.ModelSerializer):
+    artwork_url = serializers.SerializerMethodField()
     channel_id = serializers.UUIDField(source="channel.id", read_only=True, allow_null=True)
     channel_title = serializers.CharField(
         source="channel.title",
@@ -106,6 +120,9 @@ class PlaylistCatalogSerializer(serializers.ModelSerializer):
     video_count = serializers.IntegerField(read_only=True)
     runtime_seconds = serializers.FloatField(read_only=True)
     storage_bytes = serializers.IntegerField(read_only=True)
+
+    def get_artwork_url(self, obj):
+        return _artwork_url(obj)
 
     class Meta:
         model = Playlist
@@ -124,6 +141,7 @@ class PlaylistCatalogSerializer(serializers.ModelSerializer):
             "external_ids",
             "canonical_metadata",
             "locked",
+            "artwork_url",
             "video_count",
             "runtime_seconds",
             "storage_bytes",
@@ -133,6 +151,7 @@ class PlaylistCatalogSerializer(serializers.ModelSerializer):
 
 
 class OnlineVideoCatalogSerializer(serializers.ModelSerializer):
+    artwork_url = serializers.SerializerMethodField()
     media_item_id = serializers.UUIDField(source="media_item.id", read_only=True)
     title = serializers.CharField(source="media_item.title", read_only=True)
     description = serializers.CharField(source="media_item.description", read_only=True)
@@ -162,6 +181,9 @@ class OnlineVideoCatalogSerializer(serializers.ModelSerializer):
 
     versions = serializers.SerializerMethodField()
     playlists = serializers.SerializerMethodField()
+
+    def get_artwork_url(self, obj):
+        return _artwork_url(obj)
 
     def get_versions(self, obj):
         versions = getattr(obj.media_item, "present_versions", None)
@@ -209,6 +231,7 @@ class OnlineVideoCatalogSerializer(serializers.ModelSerializer):
             "external_ids",
             "canonical_metadata",
             "locked",
+            "artwork_url",
             "runtime_seconds",
             "storage_bytes",
             "version_count",

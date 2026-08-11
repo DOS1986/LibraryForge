@@ -165,6 +165,7 @@ class LibraryAssetViewSet(
 
         artwork_queryset = (
             ArtworkFile.objects
+            .exclude(relative_path__startswith="@embedded/")
             .filter(
                 library_id=parsed_id,
                 library__owner=(

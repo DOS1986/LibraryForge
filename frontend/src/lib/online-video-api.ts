@@ -22,6 +22,8 @@ export interface OnlineVideoChannel {
   external_ids: Record<string, string>
   canonical_metadata: Record<string, unknown>
   locked: boolean
+  artwork_url: string | null
+  artwork_source?: string
   video_count: number
   runtime_seconds: number
   storage_bytes: number
@@ -48,6 +50,8 @@ export interface OnlineVideoPlaylist extends OnlineVideoPlaylistSummary {
   external_ids: Record<string, string>
   canonical_metadata: Record<string, unknown>
   locked: boolean
+  artwork_url: string | null
+  artwork_source?: string
   video_count: number
   runtime_seconds: number
   storage_bytes: number
@@ -97,6 +101,8 @@ export interface OnlineVideoCatalogItem {
   external_ids: Record<string, string>
   canonical_metadata: Record<string, unknown>
   locked: boolean
+  artwork_url: string | null
+  artwork_source?: string
   runtime_seconds: number | null
   storage_bytes: number
   version_count: number

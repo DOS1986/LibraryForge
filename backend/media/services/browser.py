@@ -665,6 +665,7 @@ def build_library_browser_entries(
     if content_mode == "files":
         artwork_queryset = (
             ArtworkFile.objects
+            .exclude(relative_path__startswith="@embedded/")
             .filter(
                 library=library,
                 is_present=True,

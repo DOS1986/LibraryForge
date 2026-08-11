@@ -5,6 +5,8 @@ import {
   useState,
 } from "react"
 
+import { Link } from "react-router-dom"
+
 import {
   ArrowDown,
   ArrowUp,
@@ -54,6 +56,10 @@ import {
   formatBytes,
   formatDuration,
 } from "@/lib/format"
+
+import {
+  refreshLibraryArtwork,
+} from "@/lib/api"
 
 import {
   getOnlineVideoChannels,
@@ -233,6 +239,47 @@ function ErrorPanel({
 }
 
 
+function ArtworkImage({
+  url,
+  alt,
+  className,
+}: {
+  url: string | null | undefined
+  alt: string
+  className: string
+}) {
+  const [failed, setFailed] = useState(false)
+
+  useEffect(
+    () => {
+      setFailed(false)
+    },
+    [url],
+  )
+
+  if (!url || failed) {
+    return (
+      <div
+        className={`${className} flex shrink-0 items-center justify-center bg-muted text-[10px] text-muted-foreground`}
+        aria-label={`${alt} artwork unavailable`}
+      >
+        No art
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={url}
+      alt={alt}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={`${className} shrink-0 bg-muted`}
+    />
+  )
+}
+
+
 function ChannelCatalog({
   library,
   refreshKey,
@@ -399,11 +446,20 @@ function ChannelCatalog({
                 className="cursor-pointer border-b hover:bg-muted/50"
               >
                 <td className="p-3">
-                  <div className="font-medium">
-                    {channel.title || channel.source_id}
-                  </div>
-                  <div className="max-w-[360px] truncate text-xs text-muted-foreground">
-                    {channel.handle || channel.source_id}
+                  <div className="flex items-center gap-3">
+                    <ArtworkImage
+                      url={channel.artwork_url}
+                      alt={channel.title || channel.source_id}
+                      className="h-12 w-20 rounded-md border object-cover"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        {channel.title || channel.source_id}
+                      </div>
+                      <div className="max-w-[320px] truncate text-xs text-muted-foreground">
+                        {channel.handle || channel.source_id}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="p-3">
@@ -613,11 +669,20 @@ function PlaylistCatalog({
                 className="cursor-pointer border-b hover:bg-muted/50"
               >
                 <td className="p-3">
-                  <div className="font-medium">
-                    {playlist.title || playlist.source_id}
-                  </div>
-                  <div className="max-w-[340px] truncate text-xs text-muted-foreground">
-                    {playlist.source_id}
+                  <div className="flex items-center gap-3">
+                    <ArtworkImage
+                      url={playlist.artwork_url}
+                      alt={playlist.title || playlist.source_id}
+                      className="h-12 w-20 rounded-md border object-cover"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        {playlist.title || playlist.source_id}
+                      </div>
+                      <div className="max-w-[300px] truncate text-xs text-muted-foreground">
+                        {playlist.source_id}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="p-3">
@@ -845,11 +910,20 @@ function VideoCatalog({
                 className="cursor-pointer border-b hover:bg-muted/50"
               >
                 <td className="p-3">
-                  <div className="max-w-[360px] truncate font-medium" title={video.title}>
-                    {video.title || video.source_id}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {video.source_id}
+                  <div className="flex items-center gap-3">
+                    <ArtworkImage
+                      url={video.artwork_url}
+                      alt={video.title || video.source_id}
+                      className="h-14 w-24 rounded-md border object-cover"
+                    />
+                    <div className="min-w-0">
+                      <div className="max-w-[300px] truncate font-medium" title={video.title}>
+                        {video.title || video.source_id}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {video.source_id}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="p-3">
@@ -1022,11 +1096,20 @@ function RelatedVideosTable({
                     </td>
                   )}
                   <td className="p-3">
-                    <div className="font-medium">
-                      {video.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {video.channel_title || video.source_id}
+                    <div className="flex items-center gap-3">
+                      <ArtworkImage
+                        url={video.artwork_url}
+                        alt={video.title || video.source_id}
+                        className="h-10 w-16 rounded border object-cover"
+                      />
+                      <div className="min-w-0">
+                        <div className="max-w-[360px] truncate font-medium">
+                          {video.title}
+                        </div>
+                        <div className="max-w-[320px] truncate text-xs text-muted-foreground">
+                          {video.channel_title || video.source_id}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="p-3">
@@ -1112,6 +1195,12 @@ function ChannelDialog({
 
             <ScrollableDialogBody>
               <div className="space-y-5">
+                <ArtworkImage
+                  url={channel.artwork_url}
+                  alt={channel.title || channel.source_id}
+                  className="max-h-72 w-full rounded-lg border object-contain"
+                />
+
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
                     {providerLabel(channel.provider)}
@@ -1205,6 +1294,12 @@ function PlaylistDialog({
 
             <ScrollableDialogBody>
               <div className="space-y-5">
+                <ArtworkImage
+                  url={playlist.artwork_url}
+                  alt={playlist.title || playlist.source_id}
+                  className="max-h-72 w-full rounded-lg border object-contain"
+                />
+
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
                     {providerLabel(playlist.provider)}
@@ -1296,6 +1391,12 @@ function VideoDialog({
 
             <ScrollableDialogBody>
               <div className="space-y-6">
+                <ArtworkImage
+                  url={video.artwork_url}
+                  alt={video.title || video.source_id}
+                  className="max-h-[420px] w-full rounded-lg border object-contain"
+                />
+
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
                     {providerLabel(video.provider)}
@@ -1494,11 +1595,32 @@ export function OnlineVideoCatalog({
   const [selectedPlaylist, setSelectedPlaylist] = useState<OnlineVideoPlaylist | null>(null)
   const [selectedVideo, setSelectedVideo] = useState<OnlineVideoCatalogItem | null>(null)
   const [selectedMediaItemId, setSelectedMediaItemId] = useState<string | null>(null)
+  const [artworkRevision, setArtworkRevision] = useState(0)
+  const [refreshingArtwork, setRefreshingArtwork] = useState(false)
+  const [artworkError, setArtworkError] = useState<string | null>(null)
 
   const refreshKey = useMemo(
-    () => library.last_scanned_at ?? library.updated_at,
-    [library.last_scanned_at, library.updated_at],
+    () => `${library.last_scanned_at ?? library.updated_at}:${artworkRevision}`,
+    [library.last_scanned_at, library.updated_at, artworkRevision],
   )
+
+  async function refreshArtwork() {
+    setRefreshingArtwork(true)
+    setArtworkError(null)
+
+    try {
+      await refreshLibraryArtwork(library.id)
+      setArtworkRevision(value => value + 1)
+    } catch (err) {
+      setArtworkError(
+        err instanceof Error
+          ? err.message
+          : "Unable to refresh artwork.",
+      )
+    } finally {
+      setRefreshingArtwork(false)
+    }
+  }
 
   function openVideo(video: OnlineVideoCatalogItem) {
     setSelectedChannel(null)
@@ -1514,9 +1636,30 @@ export function OnlineVideoCatalog({
   return (
     <>
       <div className="space-y-4">
-        <div className="text-sm text-muted-foreground">
-          Browse online video semantically by channel, playlist, or individual video. Physical TubeArchivist paths remain unchanged.
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="text-sm text-muted-foreground">
+            Browse online video semantically by channel, playlist, or individual video. Physical TubeArchivist paths remain unchanged.
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/libraries/${library.id}/settings?tab=integrations`}
+              className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              Integrations
+            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={refreshingArtwork}
+              onClick={() => void refreshArtwork()}
+            >
+              {refreshingArtwork ? "Refreshing Local Artwork..." : "Refresh Local Artwork"}
+            </Button>
+          </div>
         </div>
+
+        <ErrorPanel error={artworkError} />
 
         <Tabs
           value={view}

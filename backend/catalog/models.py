@@ -1145,6 +1145,14 @@ class ArtworkFile(models.Model):
             "episode",
             "Episode",
         )
+        CHANNEL = (
+            "channel",
+            "Channel",
+        )
+        PLAYLIST = (
+            "playlist",
+            "Playlist",
+        )
 
     class ArtworkType(models.TextChoices):
         PRIMARY = (

@@ -224,6 +224,13 @@ urlpatterns = [
         ),
     ),
 
+    path(
+        "api/integrations/",
+        include(
+            "integrations.urls"
+        ),
+    ),
+
 
     path(
         "api/artwork-files/<uuid:artwork_id>/content/",
