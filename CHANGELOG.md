@@ -62,18 +62,14 @@ pre-1.0 development.
 ### Added
 
 * First-class local artwork indexing for Movies, Series, Seasons, and Episodes.
-* Detection of common local artwork conventions including poster, folder, cover,
-  fanart, backdrop, banner, logo, clearlogo, landscape, thumb, and episode
-  thumbnail files.
+* Detection of common local artwork conventions including poster, folder, cover, fanart, backdrop, banner, logo, clear logo, landscape, thumb, and episode thumbnail files.
 * Artwork association with semantic catalog entities after semantic resolution.
 * Authenticated artwork preview endpoints.
 * Preferred-artwork selection without modifying the source image files.
 * Artwork tab in the canonical catalog editor.
 * Local artwork refresh without requiring a full media or ffprobe scan.
-* Artwork records in the Files browser, recursive file counts, and storage
-  totals.
-* Regression tests for artwork discovery, association, selection, API access,
-  and scan behavior.
+* Artwork records in the Files browser, recursive file counts, and storage totals.
+* Regression tests for artwork discovery, association, selection, API access, and scan behavior.
 * Persistent per-user application settings through `UserSettings`.
 * Configurable default page size and Needs Attention sorting preferences.
 * User display-name and build-information visibility preferences.
@@ -83,8 +79,7 @@ pre-1.0 development.
 * Public system health endpoint.
 * Staff and superuser application restart controls.
 * Restart audit history through `SystemAction`.
-* Cross-platform development supervisors now manage the Django server, scan
-  worker, and Vite frontend as one LibraryForge development stack.
+* Cross-platform development supervisors now manage the Django server, scan worker, and Vite frontend as one LibraryForge development stack.
 * macOS Finder-compatible development launcher.
 * Restart/startup splash screen with health polling and automatic return to the login page.
 * Regression tests for user preferences, health checks, restart authorization,
@@ -92,34 +87,32 @@ pre-1.0 development.
 
 ### Changed
 
-* Library scans now index recognized local artwork after semantic catalog
-  resolution.
+* Library scans now index recognized local artwork after semantic catalog resolution.
 * Files browsing and recursive storage totals now include indexed artwork.
-* Needs Attention queues now support server-side sorting with sortable table
-  headers.
+* Needs Attention queues now support server-side sorting with sortable table headers.
 * Needs Attention sorting preferences persist per user.
-* The header email and standalone Sign Out button have been replaced by an
-  account menu containing Settings, System Status, Restart LibraryForge, and
-  Log Out.
+* The header email and standalone Sign Out button have been replaced by an account menu containing Settings, System Status Restart LibraryForge, and Log Out.
 * Build information can now be shown or hidden through the user's settings.
-* Application restart now waits for an active scan to finish before restarting
-  the scan worker, preventing in-progress scan jobs from being abandoned.
-* Queued scan jobs remain queued across application restarts and are processed
-  by the newly started worker.
+* Application restart now waits for an active scan to finish before restarting the scan worker, preventing in-progress scan jobs from being abandoned.
+* Queued scan jobs remain queued across application restarts and are processed by the newly started worker.
+* Added Online Video support to Needs Attention with TubeArchivist, yt-dlp, TubeArchivist-path, suggested, and manual identity remediation workflows.
+* Added semantic provenance inspection for current Online Video identity, canonical field sources, indexed metadata sources, playlist memberships, confidence, and lock state.
+* Added manual Online Video provider/video/channel identity correction with validation, notes, lock controls, canonical field provenance, and metadata change history.
+* Added Online Video semantic rebuild support to `rebuild_semantic_catalog --all` using already-indexed metadata.
+* Added regression coverage for Online Video manual resolution, source-candidate confirmation, lock synchronization, automatic reset, provenance, shared Channel safety, and canonical-title preservation.
 
 ### Safety
 
 * Local artwork management is non-destructive.
-* LibraryForge does not rename, delete, upload, overwrite, crop, resize, or
-  download artwork in this version.
-* Artwork reconciliation preserves the existing scan safety rule when
-  filesystem discovery encounters errors.
+* LibraryForge does not rename, delete, upload, overwrite, crop, resize, or download artwork in this version.
+* Artwork reconciliation preserves the existing scan safety rule when filesystem discovery encounters errors.
 * Application restart is restricted to staff and superuser accounts.
-* Restart requests do not expose arbitrary operating-system commands through
-  the web API.
-* Only the administrator requesting a restart is logged out; other user
-  sessions are preserved.
-
+* Restart requests do not expose arbitrary operating-system commands through the web API.
+* Only the administrator requesting a restart is logged out; other user sessions are preserved.
+* Reset to Automatic now routes Online Video libraries through the Online Video semantic resolver instead of the Movie/TV resolver.
+* Confirming detected Online Video identity candidates now changes semantic identity only and leaves source-provided descriptive metadata under the canonical metadata/provenance system.
+* Manual Channel reassignment now preserves shared Channel identities used by other videos and reassigns only the remediated video.
+Commit
 
 ## [0.1.0-alpha.2] - Canonical Metadata Editor
 
@@ -142,14 +135,10 @@ pre-1.0 development.
 
 ### Changed
 
-* Semantic scans now preserve manually overridden canonical fields instead of
-  replacing them on a later scan.
-* Semantic scans record automatic provenance for core identity and display
-  fields such as Movie title/year, Series title/year, and Episode title.
+* Semantic scans now preserve manually overridden canonical fields instead of replacing them on a later scan.
+* Semantic scans record automatic provenance for core identity and display fields such as Movie title/year, Series title/year and Episode title.
 * MediaVersion semantic refreshes preserve manually edited names and editions.
-* Movie and TV catalog browsing now opens the canonical metadata editor instead
-  of the earlier read-only Movie/version dialog or generic Episode detail
-  dialog.
+* Movie and TV catalog browsing now opens the canonical metadata editor instead of the earlier read-only Movie/version dialog or generic Episode detail dialog.
 
 ### Safety
 

@@ -4,6 +4,7 @@ from django.utils import timezone
 from catalog.models import (
     Episode,
     MediaVersion,
+    OnlineVideo,
     Season,
     SemanticMatch,
     Series,
@@ -1445,6 +1446,24 @@ def _refresh_media_item_lock(
             ]
         )
 
+    try:
+        online_video = media_item.online_video
+    except OnlineVideo.DoesNotExist:
+        online_video = None
+
+    if (
+        online_video
+        and online_video.locked
+        != locked
+    ):
+        online_video.locked = locked
+        online_video.save(
+            update_fields=[
+                "locked",
+                "updated_at",
+            ]
+        )
+
 
 def candidate_from_dict(
     data,
@@ -1697,6 +1716,15 @@ def reset_semantic_match(
     media_file = (
         match.media_file
     )
+
+    if media_file.library.content_type == "online_video":
+        from catalog.services.online_video import (
+            reset_online_video_match,
+        )
+
+        return reset_online_video_match(
+            match=match,
+        )
 
     previous_item = (
         media_file.media_item

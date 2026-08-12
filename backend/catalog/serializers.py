@@ -5,6 +5,7 @@ from rest_framework import serializers
 from catalog.models import (
     Episode,
     MediaVersion,
+    OnlineVideo,
     Season,
     SemanticMatch,
     Series,
@@ -645,6 +646,40 @@ class SemanticMatchSerializer(
 
         if (
             media_item.media_type
+            == MediaItem.MediaType.ONLINE_VIDEO
+        ):
+            try:
+                online_video = media_item.online_video
+            except OnlineVideo.DoesNotExist:
+                online_video = None
+
+            if online_video:
+                return {
+                    "kind": "online_video",
+                    "media_item_id": str(media_item.id),
+                    "title": media_item.title,
+                    "provider": online_video.provider,
+                    "source_id": online_video.source_id,
+                    "semantic_key": media_item.semantic_key,
+                    "channel_id": (
+                        online_video.channel.source_id
+                        if online_video.channel_id
+                        else ""
+                    ),
+                    "channel_title": (
+                        online_video.channel.title
+                        if online_video.channel_id
+                        else ""
+                    ),
+                    "channel_handle": (
+                        online_video.channel.handle
+                        if online_video.channel_id
+                        else ""
+                    ),
+                }
+
+        if (
+            media_item.media_type
             == MediaItem
             .MediaType
             .MOVIE
@@ -772,6 +807,9 @@ class SemanticResolveRequestSerializer(
                 "nfo",
                 "filename",
                 "suggested",
+                "tubearchivist",
+                "yt_dlp",
+                "tubearchivist_path",
                 "manual",
             ]
         )
@@ -791,6 +829,7 @@ class SemanticResolveRequestSerializer(
         choices=[
             "movie",
             "episode",
+            "online_video",
         ],
         required=False,
     )
@@ -858,6 +897,58 @@ class SemanticResolveRequestSerializer(
         max_length=1024,
     )
 
+    provider = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=64,
+    )
+
+    video_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=255,
+    )
+
+    channel_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=255,
+    )
+
+    channel_title = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=1024,
+    )
+
+    channel_handle = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=255,
+    )
+
+    source_url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+    upload_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+    )
+
+    video_kind = serializers.ChoiceField(
+        choices=OnlineVideo.VideoKind.choices,
+        required=False,
+        default=OnlineVideo.VideoKind.UNKNOWN,
+    )
+
     def validate(
         self,
         attrs,
@@ -891,6 +982,20 @@ class SemanticResolveRequestSerializer(
                             )
                     }
                 )
+
+            return attrs
+
+        if kind == "online_video":
+            errors = {}
+
+            if not attrs.get("provider", "").strip():
+                errors["provider"] = "Provider is required."
+
+            if not attrs.get("video_id", "").strip():
+                errors["video_id"] = "Video/source ID is required."
+
+            if errors:
+                raise serializers.ValidationError(errors)
 
             return attrs
 
@@ -945,8 +1050,8 @@ class SemanticResolveRequestSerializer(
             {
                 "kind":
                     (
-                        "Choose Movie or "
-                        "TV Episode."
+                        "Choose Movie, TV Episode, "
+                        "or Online Video."
                     )
             }
         )

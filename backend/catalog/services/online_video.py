@@ -14,6 +14,7 @@ from catalog.models import (
     CanonicalFieldState,
     Channel,
     MediaVersion,
+    MetadataChangeSet,
     OnlineVideo,
     Playlist,
     PlaylistMembership,
@@ -1462,3 +1463,542 @@ def resolve_online_video_library(*, library):
                 )
 
     return result
+
+
+def _manual_state(
+    *,
+    target_type: str,
+    target_id,
+    field_name: str,
+    value,
+    locked: bool,
+    user=None,
+):
+    return CanonicalFieldState.objects.update_or_create(
+        target_type=target_type,
+        target_id=target_id,
+        field_name=field_name,
+        defaults={
+            "source": CanonicalFieldState.Source.MANUAL,
+            "source_ref": "semantic-remediation",
+            "value_snapshot": _json_safe(value),
+            "locked": bool(locked),
+            "updated_by": user,
+        },
+    )[0]
+
+
+def _record_manual_history(
+    *,
+    target_type: str,
+    target_id,
+    changes: dict,
+    user=None,
+    note: str = "",
+):
+    if not changes:
+        return None
+
+    return MetadataChangeSet.objects.create(
+        target_type=target_type,
+        target_id=target_id,
+        source=MetadataChangeSet.Source.MANUAL,
+        changes=_json_safe(changes),
+        note=note,
+        changed_by=user,
+    )
+
+
+def _flatten_online_video_candidate(candidate: dict | None) -> dict | None:
+    candidate = _dict(candidate)
+    if not candidate:
+        return None
+
+    if candidate.get("kind") == "online_video" and candidate.get("source_id"):
+        return deepcopy(candidate)
+
+    video = _dict(candidate.get("video"))
+    channel = _dict(candidate.get("channel"))
+    provider = str(candidate.get("provider") or "").strip().lower()
+    source_id = str(video.get("id") or "").strip()
+
+    if not provider or not source_id:
+        return None
+
+    return {
+        "kind": "online_video",
+        "provider": provider,
+        "source_id": source_id,
+        "title": str(video.get("title") or "").strip(),
+        "source_url": str(video.get("url") or "").strip(),
+        "upload_date": _json_safe(video.get("upload_date")),
+        "video_kind": str(video.get("kind") or OnlineVideo.VideoKind.UNKNOWN),
+        "tags": _list(video.get("tags")),
+        "categories": _list(video.get("categories")),
+        "channel_id": str(channel.get("id") or "").strip(),
+        "channel_title": str(channel.get("title") or "").strip(),
+        "channel_handle": str(channel.get("handle") or "").strip(),
+        "channel_url": str(channel.get("url") or "").strip(),
+        "channel_description": str(channel.get("description") or "").strip(),
+        "confidence": 1.0,
+    }
+
+
+def online_video_candidate_from_match(
+    match: SemanticMatch,
+    candidate_source: str,
+) -> dict | None:
+    data = _dict(match.candidate_data)
+
+    if candidate_source in {
+        "tubearchivist",
+        "yt_dlp",
+        "tubearchivist_path",
+    }:
+        sources = _dict(data.get("sources"))
+        return _flatten_online_video_candidate(
+            sources.get(candidate_source)
+        )
+
+    if candidate_source == "suggested":
+        selected = _flatten_online_video_candidate(data.get("selected"))
+        if selected:
+            return selected
+
+        candidate = _flatten_online_video_candidate(data.get("candidate"))
+        if candidate:
+            return candidate
+
+        return _flatten_online_video_candidate(data)
+
+    return None
+
+
+def _manual_channel(
+    *,
+    library,
+    provider: str,
+    candidate: dict,
+    existing: Channel | None,
+    locked: bool,
+    user=None,
+    note: str = "",
+):
+    channel_id = str(candidate.get("channel_id") or "").strip()
+    if not channel_id:
+        return existing if (existing and existing.provider == provider) else None
+
+    if provider == "youtube" and not _is_youtube_channel_id(channel_id):
+        raise ValueError("YouTube channel IDs must be valid UC... channel IDs.")
+
+    channel = (
+        Channel.objects
+        .filter(
+            library=library,
+            provider=provider,
+            source_id=channel_id,
+        )
+        .first()
+    )
+
+    if channel is None:
+        channel = Channel.objects.create(
+            library=library,
+            provider=provider,
+            source_id=channel_id,
+            semantic_key=channel_semantic_key(provider, channel_id),
+            title=(candidate.get("channel_title") or channel_id),
+            sort_title=(candidate.get("channel_title") or channel_id),
+            handle=(candidate.get("channel_handle") or ""),
+            source_url=(candidate.get("channel_url") or ""),
+            description=(candidate.get("channel_description") or ""),
+            external_ids={provider: channel_id},
+            canonical_metadata={
+                "semantic": {
+                    "kind": "channel",
+                    "provider": provider,
+                    "source_id": channel_id,
+                }
+            },
+        )
+
+        created_changes = {}
+        for field_name, key in (
+            ("title", "channel_title"),
+            ("handle", "channel_handle"),
+            ("source_url", "channel_url"),
+            ("description", "channel_description"),
+        ):
+            value = candidate.get(key)
+            if value in (None, ""):
+                continue
+            created_changes[field_name] = {"old": None, "new": value}
+            _manual_state(
+                target_type=CanonicalFieldState.TargetType.CHANNEL,
+                target_id=channel.id,
+                field_name=field_name,
+                value=getattr(channel, field_name),
+                locked=locked,
+                user=user,
+            )
+
+        _record_manual_history(
+            target_type=CanonicalFieldState.TargetType.CHANNEL,
+            target_id=channel.id,
+            changes=created_changes,
+            user=user,
+            note=note,
+        )
+        return channel
+
+    changes = {}
+
+    for field_name, key in (
+        ("title", "channel_title"),
+        ("handle", "channel_handle"),
+        ("source_url", "channel_url"),
+        ("description", "channel_description"),
+    ):
+        value = candidate.get(key)
+        if value in (None, ""):
+            continue
+        if getattr(channel, field_name) != value:
+            changes[field_name] = {
+                "old": getattr(channel, field_name),
+                "new": value,
+            }
+            setattr(channel, field_name, value)
+
+    external_ids = dict(channel.external_ids or {})
+    external_ids[provider] = channel_id
+    channel.external_ids = external_ids
+
+    metadata = dict(channel.canonical_metadata or {})
+    metadata["semantic"] = {
+        "kind": "channel",
+        "provider": provider,
+        "source_id": channel_id,
+    }
+    channel.canonical_metadata = metadata
+    channel.save()
+
+    for field_name in (
+        "title",
+        "handle",
+        "source_url",
+        "description",
+    ):
+        if field_name in changes:
+            _manual_state(
+                target_type=CanonicalFieldState.TargetType.CHANNEL,
+                target_id=channel.id,
+                field_name=field_name,
+                value=getattr(channel, field_name),
+                locked=locked,
+                user=user,
+            )
+
+    _record_manual_history(
+        target_type=CanonicalFieldState.TargetType.CHANNEL,
+        target_id=channel.id,
+        changes=changes,
+        user=user,
+        note=note,
+    )
+
+    return channel
+
+
+@transaction.atomic
+def apply_manual_online_video_resolution(
+    *,
+    match: SemanticMatch,
+    candidate: dict,
+    lock: bool = True,
+    notes: str = "",
+    user=None,
+):
+    candidate = _flatten_online_video_candidate(candidate) or _dict(candidate)
+    provider = str(candidate.get("provider") or "").strip().lower()
+    source_id = str(candidate.get("source_id") or "").strip()
+
+    if not provider:
+        raise ValueError("Provider is required for an Online Video identity.")
+    if not source_id:
+        raise ValueError("Video/source ID is required for an Online Video identity.")
+    if provider == "youtube" and not _is_youtube_video_id(source_id):
+        raise ValueError("YouTube video IDs must be 11 characters.")
+
+    media_file = match.media_file
+    media_item = media_file.media_item
+    library = media_file.library
+
+    duplicate = (
+        OnlineVideo.objects
+        .filter(
+            library=library,
+            provider=provider,
+            source_id=source_id,
+        )
+        .exclude(media_item=media_item)
+        .first()
+    )
+    if duplicate:
+        raise ValueError(
+            "That provider/source ID is already assigned to another Online Video in this library."
+        )
+
+    duplicate_item = (
+        MediaItem.objects
+        .filter(
+            library=library,
+            media_type=MediaItem.MediaType.ONLINE_VIDEO,
+            semantic_key=online_video_semantic_key(provider, source_id),
+        )
+        .exclude(pk=media_item.pk)
+        .first()
+    )
+    if duplicate_item:
+        raise ValueError(
+            "That semantic Online Video identity is already assigned to another item in this library."
+        )
+
+    previous_candidates = deepcopy(match.candidate_data or {})
+    online_video = OnlineVideo.objects.filter(media_item=media_item).select_related("channel").first()
+    old_channel = online_video.channel if online_video else None
+    channel = _manual_channel(
+        library=library,
+        provider=provider,
+        candidate=candidate,
+        existing=old_channel,
+        locked=lock,
+        user=user,
+        note=notes,
+    )
+
+    semantic_key = online_video_semantic_key(provider, source_id)
+    media_changes = {}
+
+    if media_item.media_type != MediaItem.MediaType.ONLINE_VIDEO:
+        media_changes["media_type"] = {
+            "old": media_item.media_type,
+            "new": MediaItem.MediaType.ONLINE_VIDEO,
+        }
+        media_item.media_type = MediaItem.MediaType.ONLINE_VIDEO
+
+    if media_item.semantic_key != semantic_key:
+        media_changes["semantic_key"] = {
+            "old": media_item.semantic_key,
+            "new": semantic_key,
+        }
+        media_item.semantic_key = semantic_key
+
+    title = str(candidate.get("title") or "").strip()
+    if title and media_item.title != title:
+        media_changes["title"] = {"old": media_item.title, "new": title}
+        media_item.title = title
+
+    media_item.semantic_locked = bool(lock)
+    media_metadata = dict(media_item.canonical_metadata or {})
+    media_metadata["semantic"] = {
+        "kind": "online_video",
+        "provider": provider,
+        "source_id": source_id,
+    }
+    media_metadata["online_video"] = {
+        **_dict(media_metadata.get("online_video")),
+        "provider": provider,
+        "source_id": source_id,
+        "identity_source": "manual",
+    }
+    media_item.canonical_metadata = media_metadata
+
+    external_ids = dict(media_item.external_ids or {})
+    external_ids[provider] = source_id
+    media_item.external_ids = external_ids
+    media_item.save()
+
+    if "title" in media_changes:
+        _manual_state(
+            target_type=CanonicalFieldState.TargetType.MEDIA_ITEM,
+            target_id=media_item.id,
+            field_name="title",
+            value=media_item.title,
+            locked=lock,
+            user=user,
+        )
+
+    _record_manual_history(
+        target_type=CanonicalFieldState.TargetType.MEDIA_ITEM,
+        target_id=media_item.id,
+        changes=media_changes,
+        user=user,
+        note=notes,
+    )
+
+    if online_video is None:
+        online_video = OnlineVideo.objects.create(
+            library=library,
+            media_item=media_item,
+            channel=channel,
+            provider=provider,
+            source_id=source_id,
+        )
+        identity_changed = True
+        video_changes = {
+            "provider": {"old": None, "new": provider},
+            "source_id": {"old": None, "new": source_id},
+        }
+    else:
+        identity_changed = (
+            online_video.provider != provider
+            or online_video.source_id != source_id
+        )
+        video_changes = {}
+        if online_video.provider != provider:
+            video_changes["provider"] = {"old": online_video.provider, "new": provider}
+        if online_video.source_id != source_id:
+            video_changes["source_id"] = {"old": online_video.source_id, "new": source_id}
+
+    if identity_changed:
+        PlaylistMembership.objects.filter(
+            online_video=online_video,
+            playlist__playlist_kind=Playlist.PlaylistKind.REMOTE,
+        ).delete()
+
+    online_video.library = library
+    online_video.provider = provider
+    online_video.source_id = source_id
+    online_video.channel = channel
+    online_video.locked = bool(lock)
+
+    for field_name, key in (
+        ("source_url", "source_url"),
+        ("video_kind", "video_kind"),
+        ("tags", "tags"),
+        ("categories", "categories"),
+    ):
+        value = candidate.get(key)
+        if value in (None, ""):
+            continue
+        if getattr(online_video, field_name) != value:
+            video_changes[field_name] = {
+                "old": getattr(online_video, field_name),
+                "new": value,
+            }
+            setattr(online_video, field_name, value)
+
+    upload_date = _parse_date(candidate.get("upload_date"))
+    if upload_date is not None and online_video.upload_date != upload_date:
+        video_changes["upload_date"] = {
+            "old": online_video.upload_date,
+            "new": upload_date,
+        }
+        online_video.upload_date = upload_date
+
+    video_external = dict(online_video.external_ids or {})
+    video_external[provider] = source_id
+    online_video.external_ids = video_external
+
+    video_metadata = dict(online_video.canonical_metadata or {})
+    video_metadata["semantic"] = {
+        "kind": "online_video",
+        "provider": provider,
+        "source_id": source_id,
+    }
+    video_metadata["identity_source"] = "manual"
+    online_video.canonical_metadata = video_metadata
+    online_video.save()
+
+    for field_name in (
+        "source_url",
+        "upload_date",
+        "video_kind",
+        "tags",
+        "categories",
+    ):
+        if field_name in video_changes:
+            _manual_state(
+                target_type=CanonicalFieldState.TargetType.ONLINE_VIDEO,
+                target_id=online_video.id,
+                field_name=field_name,
+                value=getattr(online_video, field_name),
+                locked=lock,
+                user=user,
+            )
+
+    _record_manual_history(
+        target_type=CanonicalFieldState.TargetType.ONLINE_VIDEO,
+        target_id=online_video.id,
+        changes=video_changes,
+        user=user,
+        note=notes,
+    )
+
+    _ensure_version(media_item=media_item, media_file=media_file)
+
+    match.status = SemanticMatch.Status.MANUAL
+    match.source = SemanticMatch.Source.MANUAL
+    match.confidence = 1.0
+    match.candidate_data = {
+        "selected": _json_safe({
+            **candidate,
+            "kind": "online_video",
+            "provider": provider,
+            "source_id": source_id,
+        }),
+        "previous": previous_candidates,
+    }
+    match.locked = bool(lock)
+    match.notes = notes
+    match.last_resolved_at = timezone.now()
+    match.save()
+
+    return match
+
+
+@transaction.atomic
+def reset_online_video_match(*, match: SemanticMatch):
+    media_file = match.media_file
+    media_item = media_file.media_item
+
+    match.locked = False
+    match.save(update_fields=["locked", "updated_at"])
+
+    online_video = OnlineVideo.objects.filter(media_item=media_item).first()
+    if online_video:
+        online_video.delete()
+
+    media_item.semantic_locked = False
+    media_item.semantic_key = ""
+    metadata = dict(media_item.canonical_metadata or {})
+    metadata.pop("semantic", None)
+    online_metadata = dict(metadata.get("online_video") or {})
+    online_metadata.pop("identity_source", None)
+    if online_metadata:
+        metadata["online_video"] = online_metadata
+    media_item.canonical_metadata = metadata
+    media_item.save(
+        update_fields=[
+            "semantic_locked",
+            "semantic_key",
+            "canonical_metadata",
+            "updated_at",
+        ]
+    )
+
+    result = resolve_online_video_file(
+        library=media_file.library,
+        media_file=media_file,
+    )
+
+    refreshed = (
+        SemanticMatch.objects
+        .select_related(
+            "media_file",
+            "media_file__media_item",
+            "media_file__library",
+        )
+        .get(pk=match.pk)
+    )
+    return refreshed, result

@@ -51,8 +51,20 @@ import {
 } from "@/components/attention/ManualMatchForm"
 
 import {
+  OnlineVideoCandidateCard,
+} from "@/components/attention/OnlineVideoCandidateCard"
+
+import {
+  OnlineVideoManualMatchForm,
+} from "@/components/attention/OnlineVideoManualMatchForm"
+
+import {
   SemanticCandidateCard,
 } from "@/components/attention/SemanticCandidateCard"
+
+import {
+  SemanticProvenancePanel,
+} from "@/components/attention/SemanticProvenancePanel"
 
 import {
   resetSemanticMatch,
@@ -70,6 +82,10 @@ import {
   getSuggestedCandidate,
   readSemanticCandidate,
 } from "@/lib/semantic"
+
+import {
+  getOnlineVideoCandidate,
+} from "@/lib/online-video-semantic"
 
 import type {
   Library,
@@ -101,6 +117,16 @@ function assignmentLabel(
 
   if (!assignment) {
     return "No semantic assignment"
+  }
+
+  if (assignment.kind === "online_video") {
+    const provider = assignment.provider || "online"
+    const sourceId = assignment.source_id || "unknown"
+    const channel = assignment.channel_title
+      ? ` · ${assignment.channel_title}`
+      : ""
+
+    return `${assignment.title || sourceId} (${provider}:${sourceId})${channel}`
   }
 
   if (
@@ -232,12 +258,40 @@ export function SemanticMatchDialog({
     )
 
 
+  const isOnlineVideo = (
+    library.content_type === "online_video"
+    || match?.current_assignment?.kind === "online_video"
+    || match?.candidate_data?.kind === "online_video"
+  )
+
+  const taCandidate = useMemo(
+    () => match ? getOnlineVideoCandidate(match, "tubearchivist") : null,
+    [match],
+  )
+
+  const ytDlpCandidate = useMemo(
+    () => match ? getOnlineVideoCandidate(match, "yt_dlp") : null,
+    [match],
+  )
+
+  const taPathCandidate = useMemo(
+    () => match ? getOnlineVideoCandidate(match, "tubearchivist_path") : null,
+    [match],
+  )
+
+  const suggestedOnlineCandidate = useMemo(
+    () => match ? getOnlineVideoCandidate(match, "suggested") : null,
+    [match],
+  )
+
+
+
   if (!match) {
     return null
   }
 
-  const matchId =
-  match.id
+  const matchId = match.id
+
 
   async function run(
     operation:
@@ -270,12 +324,15 @@ export function SemanticMatchDialog({
     source:
       | "nfo"
       | "filename"
-      | "suggested",
+      | "suggested"
+      | "tubearchivist"
+      | "yt_dlp"
+      | "tubearchivist_path",
   ) {
     return run(
       () =>
         resolveSemanticMatch(
-            matchId,
+          matchId,
           {
             candidate_source:
               source,
@@ -634,11 +691,9 @@ export function SemanticMatchDialog({
                             text-muted-foreground
                           "
                         >
-                          NFO and filename/folder
-                          metadata identify this file
-                          differently. LibraryForge
-                          intentionally stopped here
-                          instead of guessing.
+                          {isOnlineVideo
+                            ? "Multiple Online Video identity sources disagree. LibraryForge intentionally stopped instead of silently choosing one."
+                            : "NFO and filename/folder metadata identify this file differently. LibraryForge intentionally stopped here instead of guessing."}
                         </div>
                       </div>
                     </div>
@@ -741,17 +796,19 @@ export function SemanticMatchDialog({
                         Confirmed Match
                       </h3>
 
-                      {
-                        selectedCandidate
-                        && (
+                      {isOnlineVideo ? (
+                        <OnlineVideoCandidateCard
+                          label="Confirmed Identity"
+                          candidate={suggestedOnlineCandidate}
+                        />
+                      ) : (
+                        selectedCandidate && (
                           <SemanticCandidateCard
                             label="Confirmed Identity"
-                            candidate={
-                              selectedCandidate
-                            }
+                            candidate={selectedCandidate}
                           />
                         )
-                      }
+                      )}
 
                       <div
                         className="
@@ -771,7 +828,7 @@ export function SemanticMatchDialog({
                               void run(
                                 () =>
                                   setSemanticMatchLock(
-                                    match.id,
+                                    matchId,
                                     false,
                                   )
                               )
@@ -791,7 +848,7 @@ export function SemanticMatchDialog({
                               void run(
                                 () =>
                                   resetSemanticMatch(
-                                    match.id
+                                    matchId
                                   )
                               )
                           }
@@ -814,6 +871,15 @@ export function SemanticMatchDialog({
                         assignment and reruns the
                         normal resolver now.
                       </p>
+
+                      <div className="pt-2">
+                        <h3 className="mb-3 text-lg font-semibold">
+                          Provenance
+                        </h3>
+                        <SemanticProvenancePanel
+                          matchId={matchId}
+                        />
+                      </div>
                     </div>
                   )
                   : (
@@ -839,6 +905,12 @@ export function SemanticMatchDialog({
                         </TabsTrigger>
 
                         <TabsTrigger
+                          value="provenance"
+                        >
+                          Provenance
+                        </TabsTrigger>
+
+                        <TabsTrigger
                           value="raw"
                         >
                           Raw
@@ -847,79 +919,66 @@ export function SemanticMatchDialog({
 
                       <TabsContent
                         value="candidates"
-                        className="
-                          mt-5
-                        "
+                        className="mt-5"
                       >
-                        {
-                          match.status
-                          === "conflict"
-                            ? (
-                              <div
-                                className="
-                                  grid
-                                  gap-4
-                                  lg:grid-cols-2
-                                "
-                              >
-                                <SemanticCandidateCard
-                                  label="NFO"
-                                  candidate={
-                                    nfoCandidate
-                                  }
-                                  actionLabel="Use NFO & Lock"
-                                  disabled={
-                                    busy
-                                  }
-                                  onUse={
-                                    () =>
-                                      void useCandidate(
-                                        "nfo"
-                                      )
-                                  }
-                                />
+                        {isOnlineVideo ? (
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <OnlineVideoCandidateCard
+                              label="TubeArchivist"
+                              candidate={taCandidate}
+                              actionLabel="Use TubeArchivist & Lock"
+                              disabled={busy || !taCandidate}
+                              onUse={() => void useCandidate("tubearchivist")}
+                            />
+                            <OnlineVideoCandidateCard
+                              label="yt-dlp"
+                              candidate={ytDlpCandidate}
+                              actionLabel="Use yt-dlp & Lock"
+                              disabled={busy || !ytDlpCandidate}
+                              onUse={() => void useCandidate("yt_dlp")}
+                            />
+                            <OnlineVideoCandidateCard
+                              label="TubeArchivist Path"
+                              candidate={taPathCandidate}
+                              actionLabel="Use Path Identity & Lock"
+                              disabled={busy || !taPathCandidate}
+                              onUse={() => void useCandidate("tubearchivist_path")}
+                            />
+                            <OnlineVideoCandidateCard
+                              label="Merged Suggestion"
+                              candidate={suggestedOnlineCandidate}
+                              actionLabel="Use Suggestion & Lock"
+                              disabled={busy || !suggestedOnlineCandidate}
+                              onUse={() => void useCandidate("suggested")}
+                            />
+                          </div>
+                        ) : match.status === "conflict" ? (
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <SemanticCandidateCard
+                              label="NFO"
+                              candidate={nfoCandidate}
+                              actionLabel="Use NFO & Lock"
+                              disabled={busy}
+                              onUse={() => void useCandidate("nfo")}
+                            />
 
-                                <SemanticCandidateCard
-                                  label="Filename / Folder"
-                                  candidate={
-                                    filenameCandidate
-                                  }
-                                  actionLabel="Use Filename & Lock"
-                                  disabled={
-                                    busy
-                                  }
-                                  onUse={
-                                    () =>
-                                      void useCandidate(
-                                        "filename"
-                                      )
-                                  }
-                                />
-                              </div>
-                            )
-                            : (
-                              <SemanticCandidateCard
-                                label="Automatic Suggestion"
-                                candidate={
-                                  suggestedCandidate
-                                }
-                                actionLabel="Use Suggestion & Lock"
-                                disabled={
-                                  busy
-                                  || !suggestedCandidate
-                                  || suggestedCandidate
-                                      .kind
-                                      === "unknown"
-                                }
-                                onUse={
-                                  () =>
-                                    void useCandidate(
-                                      "suggested"
-                                    )
-                                }
-                              />
-                            )
-                        }
+                            <SemanticCandidateCard
+                              label="Filename / Folder"
+                              candidate={filenameCandidate}
+                              actionLabel="Use Filename & Lock"
+                              disabled={busy}
+                              onUse={() => void useCandidate("filename")}
+                            />
+                          </div>
+                        ) : (
+                          <SemanticCandidateCard
+                            label="Automatic Suggestion"
+                            candidate={suggestedCandidate}
+                            actionLabel="Use Suggestion & Lock"
+                            disabled={busy || !suggestedCandidate || suggestedCandidate.kind === "unknown"}
+                            onUse={() => void useCandidate("suggested")}
+                          />
+                        )}
                       </TabsContent>
 
                       <TabsContent
@@ -940,22 +999,31 @@ export function SemanticMatchDialog({
                           </CardHeader>
 
                           <CardContent>
-                            <ManualMatchForm
-                              library={
-                                library
-                              }
-                              seed={
-                                selectedCandidate
-                              }
-                              busy={
-                                busy
-                              }
-                              onSubmit={
-                                manualResolve
-                              }
-                            />
+                            {isOnlineVideo ? (
+                              <OnlineVideoManualMatchForm
+                                seed={suggestedOnlineCandidate}
+                                busy={busy}
+                                onSubmit={manualResolve}
+                              />
+                            ) : (
+                              <ManualMatchForm
+                                library={library}
+                                seed={selectedCandidate}
+                                busy={busy}
+                                onSubmit={manualResolve}
+                              />
+                            )}
                           </CardContent>
                         </Card>
+                      </TabsContent>
+
+                      <TabsContent
+                        value="provenance"
+                        className="mt-5"
+                      >
+                        <SemanticProvenancePanel
+                          matchId={matchId}
+                        />
                       </TabsContent>
 
                       <TabsContent

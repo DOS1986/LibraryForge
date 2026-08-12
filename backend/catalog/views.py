@@ -49,6 +49,15 @@ from catalog.services.resolver import (
     set_semantic_match_lock,
 )
 
+from catalog.services.online_video import (
+    apply_manual_online_video_resolution,
+    online_video_candidate_from_match,
+)
+
+from catalog.services.provenance import (
+    semantic_match_provenance,
+)
+
 from media.models import MediaItem
 
 
@@ -371,16 +380,11 @@ class SemanticMatchViewSet(
 
     ordering_fields = [
         "status",
-        "source",
         "confidence",
         "locked",
         "last_resolved_at",
         "updated_at",
-        "media_file__file_name",
         "media_file__relative_path",
-        "media_file__media_item__title",
-        "media_file__duration_seconds",
-        "media_file__size_bytes",
     ]
 
     ordering = [
@@ -401,6 +405,7 @@ class SemanticMatchViewSet(
                 "media_file__library",
                 "media_file__media_item",
                 "media_file__media_item__episode__season__series",
+                "media_file__media_item__online_video__channel",
             )
         )
 
@@ -523,178 +528,142 @@ class SemanticMatchViewSet(
         request,
         pk=None,
     ):
-        match = (
-            self.get_object()
+        match = self.get_object()
+
+        request_serializer = SemanticResolveRequestSerializer(
+            data=request.data
+        )
+        request_serializer.is_valid(raise_exception=True)
+        data = request_serializer.validated_data
+        candidate_source = data["candidate_source"]
+
+        is_online_video = (
+            match.media_file.library.content_type == "online_video"
+            or data.get("kind") == "online_video"
+            or (match.candidate_data or {}).get("kind") == "online_video"
         )
 
-        request_serializer = (
-            SemanticResolveRequestSerializer(
-                data=request.data
-            )
-        )
-
-        request_serializer.is_valid(
-            raise_exception=True
-        )
-
-        data = (
-            request_serializer
-            .validated_data
-        )
-
-        candidate_source = (
-            data[
-                "candidate_source"
-            ]
-        )
-
-        if (
-            candidate_source
-            == "manual"
-        ):
-            kind = data[
-                "kind"
-            ]
-
-            if kind == "movie":
-                candidate = (
-                    SemanticCandidate(
-                        kind="movie",
-                        title=(
-                            data[
-                                "title"
-                            ]
-                            .strip()
-                        ),
-                        year=data.get(
-                            "year"
-                        ),
-                        edition=(
-                            data.get(
-                                "edition",
-                                "",
-                            )
-                            .strip()
-                        ),
-                        source="manual",
-                        confidence=1.0,
-                    )
-                )
-
+        if is_online_video:
+            if candidate_source == "manual":
+                candidate = {
+                    "kind": "online_video",
+                    "provider": data.get("provider", "").strip(),
+                    "source_id": data.get("video_id", "").strip(),
+                    "title": data.get("title", "").strip(),
+                    "channel_id": data.get("channel_id", "").strip(),
+                    "channel_title": data.get("channel_title", "").strip(),
+                    "channel_handle": data.get("channel_handle", "").strip(),
+                    "source_url": data.get("source_url", "").strip(),
+                    "upload_date": data.get("upload_date"),
+                    "video_kind": data.get("video_kind", "unknown"),
+                }
             else:
-                episode_title = (
-                    data.get(
-                        "episode_title",
-                        "",
-                    )
-                    .strip()
-                )
-
-                candidate = (
-                    SemanticCandidate(
-                        kind="episode",
-                        title=(
-                            episode_title
-                            or (
-                                "Episode "
-                                f"{data['episode_number']}"
-                            )
-                        ),
-                        series_title=(
-                            data[
-                                "series_title"
-                            ]
-                            .strip()
-                        ),
-                        series_year=(
-                            data.get(
-                                "series_year"
-                            )
-                        ),
-                        season_number=(
-                            data[
-                                "season_number"
-                            ]
-                        ),
-                        episode_number=(
-                            data[
-                                "episode_number"
-                            ]
-                        ),
-                        episode_end_number=(
-                            data.get(
-                                "episode_end_number"
-                            )
-                        ),
-                        episode_title=(
-                            episode_title
-                        ),
-                        source="manual",
-                        confidence=1.0,
-                    )
-                )
-
-        else:
-            candidate = (
-                get_match_candidate(
+                candidate = online_video_candidate_from_match(
                     match,
                     candidate_source,
                 )
-            )
 
-            if (
-                candidate.kind
-                == "unknown"
-            ):
-                raise ValidationError(
-                    {
-                        "candidate_source":
-                            (
-                                "That candidate is "
-                                "not available for "
-                                "this item."
-                            )
-                    }
-                )
+                if not candidate:
+                    raise ValidationError({
+                        "candidate_source": (
+                            "That Online Video candidate is not available "
+                            "for this item."
+                        )
+                    })
 
-        try:
-            updated = (
-                apply_manual_resolution(
+                # Confirming a detected identity must not silently turn
+                # source-provided descriptive metadata into manual canonical
+                # overrides. Keep this action identity-only; normal metadata
+                # refresh/provenance continues to own title, artwork, tags, etc.
+                candidate = {
+                    "kind": "online_video",
+                    "provider": candidate.get("provider", ""),
+                    "source_id": candidate.get("source_id", ""),
+                    "channel_id": candidate.get("channel_id", ""),
+                }
+
+            try:
+                updated = apply_manual_online_video_resolution(
                     match=match,
                     candidate=candidate,
-                    lock=data[
-                        "lock"
-                    ],
-                    notes=data.get(
-                        "notes",
-                        "",
-                    ),
+                    lock=data["lock"],
+                    notes=data.get("notes", ""),
+                    user=request.user,
                 )
-            )
+            except ValueError as exc:
+                raise ValidationError({"detail": str(exc)}) from exc
 
-        except ValueError as exc:
-            raise ValidationError(
-                {
-                    "detail":
-                        str(exc)
-                }
-            ) from exc
+        else:
+            if candidate_source == "manual":
+                kind = data["kind"]
 
-        updated = (
-            self.get_queryset()
-            .get(
-                pk=updated.pk
-            )
-        )
+                if kind == "movie":
+                    candidate = SemanticCandidate(
+                        kind="movie",
+                        title=data["title"].strip(),
+                        year=data.get("year"),
+                        edition=data.get("edition", "").strip(),
+                        source="manual",
+                        confidence=1.0,
+                    )
+                else:
+                    episode_title = data.get("episode_title", "").strip()
+                    candidate = SemanticCandidate(
+                        kind="episode",
+                        title=(
+                            episode_title
+                            or f"Episode {data['episode_number']}"
+                        ),
+                        series_title=data["series_title"].strip(),
+                        series_year=data.get("series_year"),
+                        season_number=data["season_number"],
+                        episode_number=data["episode_number"],
+                        episode_end_number=data.get("episode_end_number"),
+                        episode_title=episode_title,
+                        source="manual",
+                        confidence=1.0,
+                    )
+            else:
+                candidate = get_match_candidate(match, candidate_source)
+
+                if candidate.kind == "unknown":
+                    raise ValidationError({
+                        "candidate_source": (
+                            "That candidate is not available for this item."
+                        )
+                    })
+
+            try:
+                updated = apply_manual_resolution(
+                    match=match,
+                    candidate=candidate,
+                    lock=data["lock"],
+                    notes=data.get("notes", ""),
+                )
+            except ValueError as exc:
+                raise ValidationError({"detail": str(exc)}) from exc
+
+        updated = self.get_queryset().get(pk=updated.pk)
 
         return Response(
-            SemanticMatchSerializer(
-                updated
-            ).data,
-            status=(
-                status
-                .HTTP_200_OK
-            ),
+            SemanticMatchSerializer(updated).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="provenance",
+    )
+    def provenance(
+        self,
+        request,
+        pk=None,
+    ):
+        match = self.get_object()
+        return Response(
+            semantic_match_provenance(match),
+            status=status.HTTP_200_OK,
         )
 
     @action(

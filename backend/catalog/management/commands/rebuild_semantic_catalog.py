@@ -14,8 +14,8 @@ from libraries.models import Library
 
 class Command(BaseCommand):
     help = (
-        "Rebuild LibraryForge semantic Movie/TV "
-        "matches from already-indexed files and NFOs "
+        "Rebuild LibraryForge semantic Movie/TV/Online Video "
+        "matches from already-indexed files and metadata "
         "without running filesystem discovery or ffprobe."
     )
 
@@ -42,7 +42,7 @@ class Command(BaseCommand):
             "--all",
             action="store_true",
             help=(
-                "Rebuild all Movie/TV/Auto/Mixed libraries."
+                "Rebuild all semantic Movie/TV/Auto/Mixed/Online Video libraries."
             ),
         )
 
@@ -87,6 +87,7 @@ class Command(BaseCommand):
                         "tv",
                         "auto",
                         "mixed",
+                        "online_video",
                     ]
                 )
                 .order_by(

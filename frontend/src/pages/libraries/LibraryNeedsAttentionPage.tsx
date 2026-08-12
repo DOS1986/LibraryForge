@@ -42,10 +42,6 @@ import {
 } from "@/components/attention/SemanticMatchDialog"
 
 import {
-  SortableHeader,
-} from "@/components/tables/SortableHeader"
-
-import {
   TablePagination,
 } from "@/components/tables/TablePagination"
 
@@ -62,12 +58,7 @@ import {
   useLibraryOutlet,
 } from "@/lib/route-context"
 
-import {
-  useUserSettings,
-} from "@/lib/user-settings"
-
 import type {
-  NeedsAttentionOrdering,
   PageSize,
   SemanticMatch,
 } from "@/types"
@@ -87,6 +78,14 @@ function currentAssignment(
 
   if (!assignment) {
     return "—"
+  }
+
+  if (assignment.kind === "online_video") {
+    const sourceId = assignment.source_id || "unknown"
+    return (
+      `${assignment.title || sourceId}`
+      + (assignment.channel_title ? ` · ${assignment.channel_title}` : "")
+    )
   }
 
   if (
@@ -127,10 +126,6 @@ export function LibraryNeedsAttentionPage() {
   const {
     library,
   } = useLibraryOutlet()
-
-  const {
-    settings,
-  } = useUserSettings()
 
   const [
     tab,
@@ -173,23 +168,6 @@ export function LibraryNeedsAttentionPage() {
   >(20)
 
   const [
-    orderingByTab,
-    setOrderingByTab,
-  ] = useState<Record<
-    AttentionTab,
-    NeedsAttentionOrdering
-  >>({
-    unresolved: "confidence",
-    conflict: "-updated_at",
-    confirmed: "-updated_at",
-  })
-
-  const [
-    settingsApplied,
-    setSettingsApplied,
-  ] = useState(false)
-
-  const [
     count,
     setCount,
   ] = useState(0)
@@ -225,38 +203,6 @@ export function LibraryNeedsAttentionPage() {
   ] = useState<
     string | null
   >(null)
-
-
-  useEffect(
-    () => {
-      if (
-        !settings
-        || settingsApplied
-      ) {
-        return
-      }
-
-      setPageSize(
-        settings.default_page_size
-      )
-
-      setOrderingByTab({
-        unresolved:
-          settings.needs_attention_unresolved_sort,
-        conflict:
-          settings.needs_attention_conflict_sort,
-        confirmed:
-          settings.needs_attention_confirmed_sort,
-      })
-
-      setPage(1)
-      setSettingsApplied(true)
-    },
-    [
-      settings,
-      settingsApplied,
-    ],
-  )
 
 
   const refreshCounts =
@@ -354,7 +300,12 @@ export function LibraryNeedsAttentionPage() {
                 search,
 
                 ordering:
-                  orderingByTab[tab],
+                  tab
+                  === "confirmed"
+                    ? "-updated_at"
+                    : (
+                      "-confidence"
+                    ),
 
                 page,
 
@@ -394,7 +345,6 @@ export function LibraryNeedsAttentionPage() {
         search,
         page,
         pageSize,
-        orderingByTab,
       ],
     )
 
@@ -428,21 +378,6 @@ export function LibraryNeedsAttentionPage() {
   }
 
 
-  function changeOrdering(
-    value: string,
-  ) {
-    setOrderingByTab(
-      (current) => ({
-        ...current,
-        [tab]:
-          value as NeedsAttentionOrdering,
-      })
-    )
-
-    setPage(1)
-  }
-
-
   async function handleChanged() {
     await Promise.all([
       load(),
@@ -453,8 +388,6 @@ export function LibraryNeedsAttentionPage() {
 
   const semanticDisabled = (
     library.content_type
-    === "online_video"
-    || library.content_type
     === "generic"
   )
 
@@ -494,9 +427,8 @@ export function LibraryNeedsAttentionPage() {
                     text-muted-foreground
                   "
                 >
-                  Movie/TV semantic matching is
-                  disabled for this library's
-                  current Content Type. Existing
+                  Semantic matching is disabled for
+                  this library's current Content Type. Existing
                   historical decisions can still
                   be reviewed here, but new scans
                   will not create semantic
@@ -677,56 +609,60 @@ export function LibraryNeedsAttentionPage() {
                           text-left
                         "
                       >
-                        <SortableHeader
-                          label="File"
-                          field="media_file__file_name"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          File
+                        </th>
 
-                        <SortableHeader
-                          label="Status"
-                          field="status"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Status
+                        </th>
 
-                        <SortableHeader
-                          label="Source"
-                          field="source"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Source
+                        </th>
 
-                        <SortableHeader
-                          label="Confidence"
-                          field="confidence"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Confidence
+                        </th>
 
-                        <SortableHeader
-                          label="Current Assignment"
-                          field="media_file__media_item__title"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Current Assignment
+                        </th>
 
-                        <SortableHeader
-                          label="Media"
-                          field="media_file__size_bytes"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
+                        <th
+                          className="
+                            p-3
+                          "
+                        >
+                          Media
+                        </th>
 
-                        <SortableHeader
-                          label="Updated"
-                          field="updated_at"
-                          ordering={orderingByTab[tab]}
-                          onChange={changeOrdering}
-                        />
-
-                        <th className="p-3 text-right">
+                        <th
+                          className="
+                            p-3
+                            text-right
+                          "
+                        >
                           Action
                         </th>
                       </tr>
@@ -740,7 +676,7 @@ export function LibraryNeedsAttentionPage() {
                         && (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={7}
                               className="
                                 p-10
                                 text-center
@@ -760,7 +696,7 @@ export function LibraryNeedsAttentionPage() {
                         && (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={7}
                               className="
                                 p-10
                                 text-center
@@ -938,12 +874,6 @@ export function LibraryNeedsAttentionPage() {
                                     )
                                   }
                                 </div>
-                              </td>
-
-                              <td className="p-3 whitespace-nowrap">
-                                {new Date(
-                                  match.updated_at
-                                ).toLocaleString()}
                               </td>
 
                               <td

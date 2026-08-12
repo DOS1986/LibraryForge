@@ -246,6 +246,7 @@ export interface SemanticAssignment {
   kind:
     | "movie"
     | "episode"
+    | "online_video"
   media_item_id: string
   title: string
   year?: number | null
@@ -255,6 +256,30 @@ export interface SemanticAssignment {
   season_number?: number
   episode_number?: number
   episode_end_number?: number | null
+  provider?: string
+  source_id?: string
+  semantic_key?: string
+  channel_id?: string
+  channel_title?: string
+  channel_handle?: string
+}
+
+export interface OnlineVideoSemanticCandidate {
+  kind: "online_video"
+  provider: string
+  source_id: string
+  title: string
+  source_url: string
+  upload_date: string | null
+  video_kind: string
+  tags: string[]
+  categories: string[]
+  channel_id: string
+  channel_title: string
+  channel_handle: string
+  channel_url: string
+  channel_description: string
+  confidence: number
 }
 
 export interface SemanticCandidate {
@@ -300,6 +325,9 @@ export interface SemanticMatch {
     | "filename"
     | "folder"
     | "manual"
+    | "tubearchivist"
+    | "tubearchivist_path"
+    | "yt_dlp"
     | ""
   source_label: string
   confidence: number
@@ -316,12 +344,16 @@ export interface SemanticResolveInput {
     | "nfo"
     | "filename"
     | "suggested"
+    | "tubearchivist"
+    | "tubearchivist_path"
+    | "yt_dlp"
     | "manual"
   lock?: boolean
   notes?: string
   kind?:
     | "movie"
     | "episode"
+    | "online_video"
   title?: string
   year?: number | null
   edition?: string
@@ -331,6 +363,67 @@ export interface SemanticResolveInput {
   episode_number?: number | null
   episode_end_number?: number | null
   episode_title?: string
+  provider?: string
+  video_id?: string
+  channel_id?: string
+  channel_title?: string
+  channel_handle?: string
+  source_url?: string
+  upload_date?: string | null
+  video_kind?: string
+}
+
+export interface SemanticFieldProvenance {
+  id: string
+  target_type: string
+  target_id: string
+  field_name: string
+  source: string
+  source_label: string
+  source_ref: string
+  value_snapshot: unknown
+  locked: boolean
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SemanticProvenanceSource {
+  id: string
+  source_type: string
+  source_type_label: string
+  status: string
+  status_label: string
+  media_file_id: string
+  file_name: string
+  relative_path: string
+  extracted_data: Record<string, unknown>
+  error: string
+  last_checked_at: string
+}
+
+export interface SemanticMatchProvenance {
+  match: {
+    id: string
+    status: string
+    status_label: string
+    source: string
+    source_label: string
+    confidence: number
+    locked: boolean
+    notes: string
+    last_resolved_at: string | null
+  }
+  file: {
+    id: string
+    file_name: string
+    relative_path: string
+  }
+  current_identity: Record<string, unknown> | null
+  field_states: Record<string, SemanticFieldProvenance[]>
+  metadata_sources: SemanticProvenanceSource[]
+  playlist_memberships: Array<Record<string, unknown>>
+  candidate_data: Record<string, unknown>
 }
 
 export interface SemanticResetResult {
@@ -772,8 +865,6 @@ export interface CatalogVersionUpdate {
   notes?: string
   note?: string
 }
-
-
 export type NeedsAttentionOrdering =
   | "media_file__file_name"
   | "-media_file__file_name"
