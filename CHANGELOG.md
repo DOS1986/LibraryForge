@@ -5,7 +5,7 @@ All notable changes to LibraryForge will be documented in this file.
 LibraryForge uses Semantic Versioning while the application is under active
 pre-1.0 development.
 
-## [Unreleased]
+## [0.1.0-alpha.4] - 2026-08-11
 
 ### Added
 

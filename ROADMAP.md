@@ -55,7 +55,7 @@ Completed.
 
 ### 0.1.0-alpha.3 — Artwork and Application Housekeeping
 
-Current milestone.
+Completed.
 
 - local artwork detection, indexing, preview, and preferred-art selection
 - artwork integration with Movies, Series, Seasons, and Episodes
@@ -68,13 +68,11 @@ Current milestone.
 - Windows, Linux, and macOS development supervisors
 - coordinated Django, scan-worker, and Vite restart behavior
 
-## Planned alpha milestones
-
 ### 0.1.0-alpha.4 — Online Video / TubeArchivist Catalog
 
 Goal: make `online_video` a first-class LibraryForge media domain without forcing online video into Movie/TV semantics.
 
-Planned work:
+Completed.
 
 - OnlineVideo / Video semantic model
 - Channel model and channel catalog
@@ -89,7 +87,7 @@ Planned work:
 - preserve TubeArchivist source files without rename/move operations
 - regression tests for online-video identity and metadata persistence
 
-A direct TubeArchivist server/API connection is not required for this milestone. The first implementation should work from archived files and metadata already present locally.
+## Planned alpha milestones
 
 ### 0.1.0-alpha.5 — Metadata Providers
 
