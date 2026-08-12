@@ -59,6 +59,8 @@ export interface LibraryIntegration {
   enabled: boolean
   priority: number
   capabilities: IntegrationCapability[]
+  credential_mode: IntegrationCredentialMode
+  credential_summary: string
   created_at: string
   updated_at: string
 }
@@ -96,14 +98,17 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
     credentials: "include",
   })
   const text = await response.text()
+  const contentType = response.headers.get("content-type") ?? ""
   let data: unknown = undefined
-  if (text) {
+  if (text && contentType.includes("application/json")) {
     try { data = JSON.parse(text) } catch { data = undefined }
   }
   if (!response.ok) {
     const detail = data && typeof data === "object" && "detail" in data
       ? String((data as { detail: unknown }).detail)
-      : text || `Request failed with status ${response.status}.`
+      : contentType.includes("application/json") && text
+        ? text
+        : `Request failed with status ${response.status}.`
     throw new Error(detail)
   }
   return data as T

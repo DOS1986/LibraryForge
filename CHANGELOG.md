@@ -33,12 +33,16 @@ pre-1.0 development.
 * Added global integration management and per-library integration assignments with provider capability and priority configuration.
 * Added encrypted server-side storage for user-supplied integration credentials without returning stored secrets to the frontend.
 * Added support for credential-free, user-supplied, application-managed, and hybrid integration credential models.
-* Added TubeArchivist as an Online Video integration using network-based API access without requiring a shared filesystem or colocated container.
+* Added TubeArchivist as an Online Video integration using network-based API access without requiring a shared filesystem or collocated container.
 * Added YouTube Data API integration for metadata and artwork enrichment of existing Channels, Playlists, and Videos.
 * Added integration connection testing and provider capability/status information.
 * Added secure integration-provided artwork proxying with provider fallback and origin validation.
 * Added batched Online Video provider lookups and short-lived caching to reduce external metadata API requests.
 * Added public integration architecture documentation for current and future LibraryForge providers.
+* Added mixed-library Online Video catalog browsing with separate Movies & TV and Online Video catalog views.
+* Added regression coverage for mixed-library Online Video routing, conservative embedded-metadata classification, mixed-library automatic reset, stale identity reuse, primary-version replacement, and true duplicate conflicts.
+* Added mixed-library Online Video catalog browsing with separate Movies & TV and Online Video catalog views.
+* Added regression coverage for mixed-library Online Video routing, conservative embedded-metadata classification, mixed-library automatic reset, stale identity reuse, primary-version replacement, and true duplicate conflicts.
 
 ### Changed
 
@@ -55,7 +59,25 @@ pre-1.0 development.
 * Application-managed integration credentials are resolved only on the server and are not stored in per-user connection configuration.
 * The integration provider registry remains code-driven so future providers can be added without database schema changes solely to register a provider.
 * LibraryForge integrations are explicitly limited to metadata, artwork, catalog, and output capabilities; media acquisition and download automation remain outside the product scope.
+* Mixed libraries now route only files with explicit Online Video signals through the Online Video semantic resolver.
+* Online Video semantic resolution now reuses an existing absent semantic item when a replacement file has the same stable provider/video identity.
+* Present replacement files can become the primary MediaVersion when the previous primary file is no longer present.
+* Integration API errors now suppress raw non-JSON server HTML and surface a concise HTTP failure message instead.
+* Mixed libraries now route only files with explicit Online Video signals through the Online Video semantic resolver.
+* Online Video semantic resolution now reuses an existing absent semantic item when a replacement file has the same stable provider/video identity.
+* Present replacement files can become the primary MediaVersion when the previous primary file is no longer present.
+* Integration API errors now suppress raw non-JSON server HTML and surface a concise HTTP failure message instead.
 
+### Fixed
+
+* Fixed false `duplicate_source_identity` conflicts when a moved or replacement Online Video file reappears with the same provider/video ID after the previous physical file is absent.
+* Fixed Reset to Automatic routing for Online Video matches stored inside mixed libraries.
+* Fixed mixed-library Online Video records being semantically classified without a corresponding Online Video catalog view.
+* Fixed raw Django HTML error pages being rendered directly in the Integrations UI.
+* Fixed false `duplicate_source_identity` conflicts when a moved or replacement Online Video file reappears with the same provider/video ID after the previous physical file is absent.
+* Fixed Reset to Automatic routing for Online Video matches stored inside mixed libraries.
+* Fixed mixed-library Online Video records being semantically classified without a corresponding Online Video catalog view.
+* Fixed raw Django HTML error pages being rendered directly in the Integrations UI.
 
 ## [0.1.0-alpha.3] - Artwork Management and Application Housekeeping
 

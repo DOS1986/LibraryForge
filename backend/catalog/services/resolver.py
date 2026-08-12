@@ -1270,7 +1270,7 @@ def resolve_library_semantics(
                 [],
         }
 
-    media_files = list(
+    media_file_queryset = (
         MediaFile.objects
         .filter(
             library=library,
@@ -1279,6 +1279,18 @@ def resolve_library_semantics(
         .select_related(
             "media_item"
         )
+    )
+
+    if library.content_type == "mixed":
+        media_file_queryset = (
+            media_file_queryset
+            .prefetch_related(
+                "metadata_sources"
+            )
+        )
+
+    media_files = list(
+        media_file_queryset
     )
 
     nfo_map = {}
@@ -1321,16 +1333,37 @@ def resolve_library_semantics(
             [],
     }
 
+    mixed_online_video = (
+        library.content_type == "mixed"
+    )
+
+    if mixed_online_video:
+        from catalog.services.online_video import (
+            has_online_video_signal,
+            resolve_online_video_file,
+        )
+
     for media_file in media_files:
         try:
-            status = resolve_media_file(
-                library=library,
-                media_file=media_file,
-                nfo_files=nfo_map.get(
-                    media_file.id,
-                    [],
-                ),
-            )
+            if (
+                mixed_online_video
+                and has_online_video_signal(
+                    media_file
+                )
+            ):
+                status = resolve_online_video_file(
+                    library=library,
+                    media_file=media_file,
+                )
+            else:
+                status = resolve_media_file(
+                    library=library,
+                    media_file=media_file,
+                    nfo_files=nfo_map.get(
+                        media_file.id,
+                        [],
+                    ),
+                )
 
             if status in result:
                 result[
@@ -1717,7 +1750,20 @@ def reset_semantic_match(
         match.media_file
     )
 
-    if media_file.library.content_type == "online_video":
+    candidate_kind = (
+        (match.candidate_data or {})
+        .get("kind")
+    )
+    is_online_video_match = (
+        media_file.library.content_type == "online_video"
+        or candidate_kind == "online_video"
+        or media_file.media_item.media_type == MediaItem.MediaType.ONLINE_VIDEO
+        or OnlineVideo.objects.filter(
+            media_item=media_file.media_item
+        ).exists()
+    )
+
+    if is_online_video_match:
         from catalog.services.online_video import (
             reset_online_video_match,
         )

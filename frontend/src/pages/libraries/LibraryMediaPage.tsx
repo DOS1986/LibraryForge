@@ -421,11 +421,40 @@ export function LibraryMediaPage() {
                         library={library}
                       />
                     )
-                    : (
-                      <SemanticCatalog
-                        library={library}
-                      />
-                    )
+                    : library.content_type
+                      === "mixed"
+                        ? (
+                          <Tabs
+                            defaultValue="semantic"
+                            className="space-y-4"
+                          >
+                            <TabsList>
+                              <TabsTrigger value="semantic">
+                                Movies & TV
+                              </TabsTrigger>
+                              <TabsTrigger value="online-video">
+                                Online Video
+                              </TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="semantic">
+                              <SemanticCatalog
+                                library={library}
+                              />
+                            </TabsContent>
+
+                            <TabsContent value="online-video">
+                              <OnlineVideoCatalog
+                                library={library}
+                              />
+                            </TabsContent>
+                          </Tabs>
+                        )
+                        : (
+                          <SemanticCatalog
+                            library={library}
+                          />
+                        )
                 }
               </TabsContent>
 

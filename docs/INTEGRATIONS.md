@@ -34,7 +34,25 @@ This distinction is intentionally part of the provider registry rather than the 
 
 The base provider implementation can read application-managed credentials from the Django setting `LIBRARYFORGE_INTEGRATION_APPLICATION_CREDENTIALS`. Future application/hybrid adapters can also override that behavior if a provider explicitly permits a bundled project credential. This setting is server-side only and is never serialized to the frontend.
 
-See `docs/INTEGRATION_PROVIDER_POLICY.md` for the provider-by-provider policy matrix and official-source references.
+
+## Failure behavior
+
+Integration failures must not change or remove managed media. Metadata and artwork lookups are enrichment-only operations.
+
+If an assigned provider is unavailable, times out, or returns unusable artwork, LibraryForge falls through to the next eligible provider where possible. If no provider succeeds, the catalog remains usable and displays the local metadata/artwork state or a no-art placeholder.
+
+Frontend API clients must not render raw server HTML error pages. Unexpected non-JSON server failures are reduced to a concise HTTP-status error while the detailed traceback remains server-side during development.
+
+## Mixed libraries
+
+Mixed libraries may contain Movie/TV and Online Video media together. LibraryForge routes a file through the Online Video resolver only when it has an explicit Online Video signal, such as:
+
+- an existing Online Video semantic assignment,
+- a detected TubeArchivist metadata source,
+- a detected yt-dlp metadata source, or
+- a validated TubeArchivist `<channel-id>/<video-id>` archive path.
+
+Generic embedded title/artist metadata alone is not enough to classify a mixed-library file as Online Video.
 
 ## Alpha 0.1.0-alpha.4 providers
 

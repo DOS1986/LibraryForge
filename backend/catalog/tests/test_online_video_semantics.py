@@ -15,7 +15,7 @@ from catalog.services.online_video import (
     online_video_semantic_key,
     playlist_semantic_key,
 )
-from catalog.services.resolver import resolve_library_semantics
+from catalog.services.resolver import resolve_library_semantics, reset_semantic_match
 from libraries.models import Library
 from media.models import MediaFile, MediaItem
 from metadata.models import MetadataSource
@@ -469,3 +469,194 @@ def test_path_identity_conflicts_with_different_explicit_ytdlp_id():
     assert match.status == SemanticMatch.Status.CONFLICT
     assert match.candidate_data["reason"] == "source_identity_disagreement"
     assert "tubearchivist_path" in match.candidate_data["sources"]
+
+def test_mixed_library_routes_explicit_online_video_signal():
+    library = make_library("mixed-online", content_type="mixed")
+    item, media_file = make_file(library)
+
+    add_source(
+        media_file,
+        MetadataSource.SourceType.YT_DLP,
+        {
+            "extractor_key": "Youtube",
+            "id": "abc123def45",
+            "title": "Mixed Library Video",
+            "channel": "Mixed Channel",
+            "channel_id": "UC1234567890123456789012",
+        },
+    )
+
+    result = resolve_library_semantics(library=library)
+
+    assert result["matched"] == 1
+    item.refresh_from_db()
+    assert item.media_type == MediaItem.MediaType.ONLINE_VIDEO
+    assert OnlineVideo.objects.filter(media_item=item).exists()
+
+    match = SemanticMatch.objects.get(media_file=media_file)
+    assert match.candidate_data["kind"] == "online_video"
+
+
+
+def test_mixed_library_does_not_treat_generic_embedded_metadata_as_online_video():
+    library = make_library("mixed-embedded", content_type="mixed")
+    item, media_file = make_file(
+        library,
+        "Some Folder/ordinary-file.mkv",
+    )
+
+    add_source(
+        media_file,
+        MetadataSource.SourceType.EMBEDDED,
+        {
+            "format_tags": {
+                "title": "Ordinary Embedded Title",
+                "artist": "An Artist",
+            },
+        },
+        extracted_data={
+            "title": "Ordinary Embedded Title",
+            "artist": "An Artist",
+        },
+    )
+
+    resolve_library_semantics(library=library)
+
+    item.refresh_from_db()
+    assert item.media_type != MediaItem.MediaType.ONLINE_VIDEO
+    assert not OnlineVideo.objects.filter(media_item=item).exists()
+
+
+def test_mixed_library_online_video_reset_uses_online_video_resolver():
+    library = make_library("mixed-reset", content_type="mixed")
+    item, media_file = make_file(library)
+
+    add_source(
+        media_file,
+        MetadataSource.SourceType.YT_DLP,
+        {
+            "extractor_key": "Youtube",
+            "id": "abc123def45",
+            "title": "Mixed Reset Video",
+            "channel": "Mixed Channel",
+            "channel_id": "UC1234567890123456789012",
+        },
+    )
+
+    resolve_library_semantics(library=library)
+    match = SemanticMatch.objects.get(media_file=media_file)
+
+    refreshed, result = reset_semantic_match(match=match)
+
+    assert result == "matched"
+    assert refreshed.status == SemanticMatch.Status.MATCHED
+    assert refreshed.candidate_data["kind"] == "online_video"
+    assert OnlineVideo.objects.filter(media_item=item).exists()
+
+
+def test_absent_duplicate_identity_is_reused_for_replacement_file():
+    library = make_library("replacement")
+    original_item, original_file = make_file(
+        library,
+        "Channel/original.mkv",
+    )
+    add_source(
+        original_file,
+        MetadataSource.SourceType.YT_DLP,
+        {
+            "extractor_key": "Youtube",
+            "id": "abc123def45",
+            "title": "Original File",
+            "channel": "Example Channel",
+            "channel_id": "UC1234567890123456789012",
+        },
+    )
+
+    first = resolve_library_semantics(library=library)
+    assert first["matched"] == 1
+
+    original_file.is_present = False
+    original_file.save(update_fields=["is_present", "updated_at"])
+
+    replacement_item, replacement_file = make_file(
+        library,
+        "Channel/replacement.mkv",
+    )
+    replacement_item_id = replacement_item.id
+    add_source(
+        replacement_file,
+        MetadataSource.SourceType.YT_DLP,
+        {
+            "extractor_key": "Youtube",
+            "id": "abc123def45",
+            "title": "Replacement File",
+            "channel": "Example Channel",
+            "channel_id": "UC1234567890123456789012",
+        },
+    )
+
+    second = resolve_library_semantics(library=library)
+
+    assert second["matched"] == 1
+    assert second["conflict"] == 0
+
+    replacement_file.refresh_from_db()
+    assert replacement_file.media_item_id == original_item.id
+    assert not MediaItem.objects.filter(pk=replacement_item_id).exists()
+    assert OnlineVideo.objects.filter(
+        library=library,
+        provider="youtube",
+        source_id="abc123def45",
+    ).count() == 1
+
+    current_version = MediaVersion.objects.get(media_file=replacement_file)
+    assert current_version.media_item_id == original_item.id
+    assert current_version.is_primary is True
+
+    stale_version = MediaVersion.objects.get(media_file=original_file)
+    assert stale_version.is_primary is False
+
+
+def test_present_duplicate_identity_remains_a_conflict():
+    library = make_library("present-duplicate")
+    _item_one, file_one = make_file(
+        library,
+        "Channel/one.mkv",
+    )
+    _item_two, file_two = make_file(
+        library,
+        "Channel/two.mkv",
+    )
+
+    for media_file, title in (
+        (file_one, "One"),
+        (file_two, "Two"),
+    ):
+        add_source(
+            media_file,
+            MetadataSource.SourceType.YT_DLP,
+            {
+                "extractor_key": "Youtube",
+                "id": "abc123def45",
+                "title": title,
+                "channel": "Example Channel",
+                "channel_id": "UC1234567890123456789012",
+            },
+        )
+
+    result = resolve_library_semantics(library=library)
+
+    assert result["matched"] == 1
+    assert result["conflict"] == 1
+    assert OnlineVideo.objects.filter(
+        library=library,
+        provider="youtube",
+        source_id="abc123def45",
+    ).count() == 1
+
+    conflict = SemanticMatch.objects.get(
+        media_file=file_two,
+        status=SemanticMatch.Status.CONFLICT,
+    )
+    assert conflict.candidate_data["reason"] == "duplicate_source_identity"
+

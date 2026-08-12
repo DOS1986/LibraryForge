@@ -980,9 +980,18 @@ def _ensure_version(*, media_item: MediaItem, media_file: MediaFile):
         version.media_item = media_item
         changed = True
 
+    # An old primary version whose physical file disappeared must not
+    # permanently block a replacement file from becoming the active primary.
+    MediaVersion.objects.filter(
+        media_item=media_item,
+        is_primary=True,
+        media_file__is_present=False,
+    ).exclude(pk=version.pk).update(is_primary=False)
+
     has_primary = MediaVersion.objects.filter(
         media_item=media_item,
         is_primary=True,
+        media_file__is_present=True,
     ).exclude(pk=version.pk).exists()
 
     if not has_primary and not version.is_primary:
@@ -1014,6 +1023,27 @@ def _mark_match(
         },
     )
     return match
+
+
+def has_online_video_signal(media_file: MediaFile) -> bool:
+    """Return True only when a file has an explicit Online Video signal.
+
+    This is intentionally conservative for mixed libraries: an existing
+    OnlineVideo assignment, an already-classified Online Video MediaItem, a
+    detected TubeArchivist/yt-dlp source, or a validated TubeArchivist archive
+    path is enough. Generic embedded title/artist metadata is not.
+    """
+
+    if media_file.media_item.media_type == MediaItem.MediaType.ONLINE_VIDEO:
+        return True
+
+    if _detected_source(media_file, MetadataSource.SourceType.TUBEARCHIVIST):
+        return True
+
+    if _detected_source(media_file, MetadataSource.SourceType.YT_DLP):
+        return True
+
+    return _normalize_tubearchivist_path(media_file) is not None
 
 
 def _source_candidates(media_file: MediaFile) -> tuple[list[dict], dict]:
@@ -1138,27 +1168,48 @@ def resolve_online_video_file(*, library, media_file: MediaFile) -> str:
         )
         return "conflict"
 
-    duplicate = OnlineVideo.objects.filter(
-        library=library,
-        provider=provider,
-        source_id=source_id,
-    ).exclude(media_item=media_item).first()
+    existing_video = OnlineVideo.objects.filter(media_item=media_item).first()
+
+    duplicate = (
+        OnlineVideo.objects
+        .select_related("media_item")
+        .filter(
+            library=library,
+            provider=provider,
+            source_id=source_id,
+        )
+        .exclude(media_item=media_item)
+        .first()
+    )
 
     if duplicate:
-        _mark_match(
-            media_file=media_file,
-            status=SemanticMatch.Status.CONFLICT,
-            confidence=0,
-            candidate_data={
-                "kind": "online_video",
-                "reason": "duplicate_source_identity",
-                "existing_media_item_id": str(duplicate.media_item_id),
-                "candidate": merged,
-            },
-        )
-        return "conflict"
+        duplicate_has_present_file = duplicate.media_item.files.filter(
+            is_present=True,
+        ).exists()
 
-    existing_video = OnlineVideo.objects.filter(media_item=media_item).first()
+        if duplicate_has_present_file or existing_video is not None:
+            _mark_match(
+                media_file=media_file,
+                status=SemanticMatch.Status.CONFLICT,
+                confidence=0,
+                candidate_data={
+                    "kind": "online_video",
+                    "reason": "duplicate_source_identity",
+                    "existing_media_item_id": str(duplicate.media_item_id),
+                    "candidate": merged,
+                },
+            )
+            return "conflict"
+
+        # A prior physical file for this stable provider identity may have been
+        # renamed, moved, or recreated by a scan. Reuse the existing semantic
+        # MediaItem instead of manufacturing a false duplicate conflict.
+        from catalog.services.resolver import _move_media_file
+
+        _move_media_file(media_file, duplicate.media_item)
+        media_item = duplicate.media_item
+        existing_video = duplicate
+
     if existing_video and (
         existing_video.provider != provider
         or existing_video.source_id != source_id
