@@ -88,7 +88,7 @@ requires-dist = [
     { name = "django-environ", specifier = ">=0.12,<1" },
     { name = "django-filter", specifier = ">=25,<26" },
     { name = "djangorestframework", specifier = ">=3.16,<4" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4,<4" },
 ]
 
 [package.metadata.requires-dev]
