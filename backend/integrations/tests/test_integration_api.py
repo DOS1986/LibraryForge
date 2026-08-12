@@ -71,3 +71,38 @@ class IntegrationApiTests(APITestCase):
         self.assertEqual(providers["tubearchivist"]["credential_mode"], "user")
         self.assertTrue(providers["youtube"]["credential_summary"])
         self.assertTrue(providers["tubearchivist"]["credential_summary"])
+
+    def test_library_links_expose_provider_credential_metadata(self):
+        from integrations.crypto import encrypt_secrets
+        from integrations.models import IntegrationConnection, LibraryIntegration
+        from libraries.models import Library
+
+        library = Library.objects.create(
+            owner=self.user,
+            name="YouTube",
+            path="/youtube",
+            content_type="online_video",
+        )
+        connection = IntegrationConnection.objects.create(
+            owner=self.user,
+            name="My TubeArchivist",
+            provider="tubearchivist",
+            configuration={"base_url": "https://tube.example.test"},
+            encrypted_secrets=encrypt_secrets({"api_token": "secret-token"}),
+        )
+        LibraryIntegration.objects.create(
+            library=library,
+            connection=connection,
+            capabilities=["metadata", "artwork", "catalog"],
+        )
+
+        response = self.client.get(
+            f"/api/integrations/library-links/?library={library.id}"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["provider"], "tubearchivist")
+        self.assertEqual(response.data[0]["provider_label"], "TubeArchivist")
+        self.assertEqual(response.data[0]["credential_mode"], "user")
+        self.assertTrue(response.data[0]["credential_summary"])

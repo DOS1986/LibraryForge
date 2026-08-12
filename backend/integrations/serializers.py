@@ -118,9 +118,17 @@ class LibraryIntegrationSerializer(serializers.ModelSerializer):
     connection_name = serializers.CharField(source="connection.name", read_only=True)
     provider = serializers.CharField(source="connection.provider", read_only=True)
     provider_label = serializers.SerializerMethodField()
+    credential_mode = serializers.SerializerMethodField()
+    credential_summary = serializers.SerializerMethodField()
 
     def get_provider_label(self, obj):
         return get_provider_class(obj.connection.provider).definition.label
+
+    def get_credential_mode(self, obj):
+        return get_provider_class(obj.connection.provider).definition.credential_mode
+
+    def get_credential_summary(self, obj):
+        return get_provider_class(obj.connection.provider).definition.credential_summary
 
     class Meta:
         model = LibraryIntegration
