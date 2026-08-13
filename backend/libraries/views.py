@@ -5,18 +5,21 @@ from rest_framework import (
     status,
     viewsets,
 )
-
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from jobs.models import ScanJob
+from jobs.serializers import ScanJobSerializer
 
-from jobs.serializers import (
-    ScanJobSerializer,
+from libraries.security import (
+    LibraryPathPolicyError,
+    enforce_library_path_policy,
 )
-
 from libraries.services.storage import (
+    StorageAccessError,
     test_storage_capabilities,
+    validate_storage_path,
 )
 
 from .models import Library
@@ -67,15 +70,49 @@ class LibraryViewSet(
         self,
         request,
     ):
-        path = request.data.get(
-            "path",
-            "",
-        )
-
-        result = (
-            test_storage_capabilities(
-                path
+        path_value = str(
+            request.data.get(
+                "path",
+                "",
             )
+            or ""
+        ).strip()
+
+        if not path_value:
+            raise ValidationError(
+                {
+                    "path": (
+                        "A storage path is required."
+                    )
+                }
+            )
+
+        try:
+            validated_path = validate_storage_path(
+                path_value
+            )
+
+            enforce_library_path_policy(
+                path=validated_path,
+                user=request.user,
+            )
+
+        except (
+            StorageAccessError,
+            LibraryPathPolicyError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise ValidationError(
+                {
+                    "path": str(exc)
+                }
+            ) from exc
+
+        # Only run write/rename/link capability probes after the
+        # requested path has passed the operator's path policy.
+        result = test_storage_capabilities(
+            path_value
         )
 
         return Response(

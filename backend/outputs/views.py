@@ -5,19 +5,24 @@ from rest_framework import (
 )
 
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import (
+    ValidationError,
+)
 from rest_framework.response import Response
+
+from outputs.security import (
+    ProjectionSecurityError,
+    validate_projection_for_run,
+)
 
 from .models import (
     OutputProfile,
     Projection,
 )
-
 from .serializers import (
     OutputProfileSerializer,
     ProjectionSerializer,
 )
-
 from .services.projection import (
     preview_projection,
     run_projection,
@@ -74,7 +79,10 @@ class ProjectionViewSet(
             .filter(
                 library__owner=(
                     self.request.user
-                )
+                ),
+                output_profile__owner=(
+                    self.request.user
+                ),
             )
             .select_related(
                 "library",
@@ -97,42 +105,6 @@ class ProjectionViewSet(
 
         return queryset
 
-    def perform_create(
-        self,
-        serializer,
-    ):
-        library = (
-            serializer
-            .validated_data[
-                "library"
-            ]
-        )
-
-        output_profile = (
-            serializer
-            .validated_data[
-                "output_profile"
-            ]
-        )
-
-        if (
-            library.owner_id
-            != self.request.user.id
-        ):
-            raise ValidationError(
-                "Invalid library."
-            )
-
-        if (
-            output_profile.owner_id
-            != self.request.user.id
-        ):
-            raise ValidationError(
-                "Invalid output profile."
-            )
-
-        serializer.save()
-
     @action(
         detail=True,
         methods=["get"],
@@ -143,6 +115,18 @@ class ProjectionViewSet(
         pk=None,
     ):
         projection = self.get_object()
+
+        try:
+            validate_projection_for_run(
+                projection=projection,
+                user=request.user,
+            )
+        except ProjectionSecurityError as exc:
+            raise ValidationError(
+                {
+                    "detail": str(exc)
+                }
+            ) from exc
 
         return Response(
             preview_projection(
@@ -160,6 +144,18 @@ class ProjectionViewSet(
         pk=None,
     ):
         projection = self.get_object()
+
+        try:
+            validate_projection_for_run(
+                projection=projection,
+                user=request.user,
+            )
+        except ProjectionSecurityError as exc:
+            raise ValidationError(
+                {
+                    "detail": str(exc)
+                }
+            ) from exc
 
         result = run_projection(
             projection

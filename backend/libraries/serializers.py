@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
+from libraries.security import (
+    LibraryPathPolicyError,
+    enforce_library_path_policy,
+)
 from libraries.services.storage import (
+    StorageAccessError,
     validate_storage_path as
     validate_server_storage_path,
 )
@@ -97,11 +102,30 @@ class LibrarySerializer(
             )
 
         try:
-            validate_server_storage_path(
-                value
+            path = (
+                validate_server_storage_path(
+                    value
+                )
+            )
+
+            request = self.context.get(
+                "request"
+            )
+
+            if request is None:
+                raise LibraryPathPolicyError(
+                    "Request context is required "
+                    "to validate a library path."
+                )
+
+            enforce_library_path_policy(
+                path=path,
+                user=request.user,
             )
 
         except (
+            StorageAccessError,
+            LibraryPathPolicyError,
             OSError,
             ValueError,
         ) as exc:

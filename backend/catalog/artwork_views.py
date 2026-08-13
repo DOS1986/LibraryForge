@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 
+from rest_framework import status
 from rest_framework.decorators import (
     api_view,
     permission_classes,
@@ -22,6 +23,7 @@ from catalog.services.artwork import (
     serialize_artwork,
 )
 from libraries.models import Library
+from libraries.services.storage import StorageAccessError
 from media.models import MediaFile
 
 
@@ -30,7 +32,6 @@ MAX_EMBEDDED_ARTWORK_BYTES = 25 * 1024 * 1024
 
 def _library_file_path(*, library, relative_path: str):
     root = Path(library.path).resolve()
-
     try:
         file_path = (
             root
@@ -68,6 +69,7 @@ def _attached_picture_stream(media_file: MediaFile, stream_index: int):
             continue
 
         disposition = stream.get("disposition") or {}
+
         if disposition.get("attached_pic") in (1, "1", True):
             return stream
 
@@ -76,6 +78,7 @@ def _attached_picture_stream(media_file: MediaFile, stream_index: int):
 
 def _ffmpeg_executable():
     configured = getattr(settings, "FFMPEG_PATH", "")
+
     if configured:
         return str(configured)
 
@@ -94,6 +97,7 @@ def _ffmpeg_executable():
 
 def _embedded_artwork_response(artwork: ArtworkFile):
     locator = embedded_artwork_locator(artwork.relative_path)
+
     if locator is None:
         raise Http404("Embedded artwork locator is invalid.")
 
@@ -138,6 +142,7 @@ def _embedded_artwork_response(artwork: ArtworkFile):
             check=False,
             timeout=15,
         )
+
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise Http404(
             "Unable to read embedded artwork."
@@ -154,6 +159,7 @@ def _embedded_artwork_response(artwork: ArtworkFile):
         content_type="image/png",
     )
     response["Cache-Control"] = "private, max-age=3600"
+
     return response
 
 
@@ -241,8 +247,17 @@ def library_artwork_refresh(
         owner=request.user,
     )
 
-    result = scan_library_artwork(
-        library=library
-    )
+    try:
+        result = scan_library_artwork(
+            library=library
+        )
+
+    except StorageAccessError as exc:
+        return Response(
+            {
+                "detail": str(exc)
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     return Response(result)

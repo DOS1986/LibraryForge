@@ -13,7 +13,7 @@ from libraryforge.pagination import (
     LibraryForgePagination,
 )
 
-from metadata.services.nfo import (
+from metadata.services.secure_nfo import (
     parse_nfo_content,
     write_nfo_file,
 )
@@ -22,7 +22,6 @@ from .models import (
     MetadataSource,
     NfoFile,
 )
-
 from .serializers import (
     MetadataSourceSerializer,
     NfoFileSerializer,
@@ -201,11 +200,9 @@ class NfoFileViewSet(
         if raw_xml is None:
             raise ValidationError(
                 {
-                    "raw_xml":
-                        (
-                            "raw_xml is "
-                            "required."
-                        )
+                    "raw_xml": (
+                        "raw_xml is required."
+                    )
                 }
             )
 
@@ -218,19 +215,17 @@ class NfoFileViewSet(
         except PermissionError as exc:
             raise ValidationError(
                 {
-                    "raw_xml":
-                        str(exc)
+                    "raw_xml": str(exc)
                 }
             ) from exc
 
         except ValueError as exc:
             raise ValidationError(
                 {
-                    "raw_xml":
-                        (
-                            "Invalid NFO: "
-                            f"{exc}"
-                        )
+                    "raw_xml": (
+                        "Invalid NFO: "
+                        f"{exc}"
+                    )
                 }
             ) from exc
 
@@ -263,37 +258,24 @@ class NfoFileViewSet(
 
         return Response(
             {
-                "valid":
-                    (
-                        parsed["status"]
-                        == NfoFile
-                        .ParseStatus
-                        .OK
-                    ),
-
-                "root_element":
-                    parsed[
-                        "root_element"
-                    ],
-
-                "title":
-                    parsed[
-                        "title"
-                    ],
-
-                "year":
-                    parsed[
-                        "year"
-                    ],
-
-                "parsed_data":
-                    parsed[
-                        "parsed_data"
-                    ],
-
-                "error":
-                    parsed[
-                        "error"
-                    ],
+                "valid": (
+                    parsed["status"]
+                    == NfoFile.ParseStatus.OK
+                ),
+                "root_element": parsed[
+                    "root_element"
+                ],
+                "title": parsed[
+                    "title"
+                ],
+                "year": parsed[
+                    "year"
+                ],
+                "parsed_data": parsed[
+                    "parsed_data"
+                ],
+                "error": parsed[
+                    "error"
+                ],
             }
         )
