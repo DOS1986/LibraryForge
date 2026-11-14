@@ -58,6 +58,11 @@ from media.views import (
     MediaItemViewSet,
 )
 
+from metadata.match_views import (
+    match_context_view,
+    match_preview_view,
+    match_search_view,
+)
 from metadata.views import (
     MetadataSourceViewSet,
     NfoFileViewSet,
@@ -284,6 +289,24 @@ urlpatterns = [
         "api/catalog-editor/versions/<uuid:version_id>/make-primary/",
         media_version_make_primary,
         name="catalog-editor-version-primary",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/",
+        match_context_view,
+        name="metadata-match-context",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/search/",
+        match_search_view,
+        name="metadata-match-search",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/preview/",
+        match_preview_view,
+        name="metadata-match-preview",
     ),
 
     path(

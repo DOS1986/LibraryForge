@@ -64,6 +64,7 @@ def provider_catalog() -> list[dict]:
                 "credential_mode": definition.credential_mode,
                 "credential_summary": definition.credential_summary,
                 "metadata_target_types": list(definition.metadata_target_types),
+                "attribution": definition.attribution,
                 "fields": [
                     {
                         "name": field.name,

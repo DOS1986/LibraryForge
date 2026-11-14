@@ -940,3 +940,140 @@ export interface RestartRequestResult {
   accepted: boolean
   runtime_started_at: string
 }
+
+
+// Metadata provider matching (read-only search and preview)
+
+export type MetadataMatchKind = "movie" | "series"
+
+export interface MetadataMatchTarget {
+  type: MetadataMatchKind
+  id: string
+  library_id: string
+  title: string
+  year: number | null
+}
+
+export interface MetadataMatchConnection {
+  connection_id: string
+  connection_name: string
+  provider: string
+  provider_label: string
+  status: string
+  available: boolean
+  reason: string
+  attribution: string
+}
+
+export interface MetadataMatchContext {
+  target: MetadataMatchTarget
+  connections: MetadataMatchConnection[]
+  search_defaults: {
+    query: string
+    year: number | null
+    original_title: string
+  }
+}
+
+export interface MetadataExternalId {
+  namespace: string
+  value: string
+}
+
+export type MetadataMatchTier =
+  | "strong"
+  | "likely"
+  | "possible"
+  | "weak"
+  | "conflict"
+
+export interface MetadataMatchReason {
+  code: string
+  label: string
+  tone: "positive" | "neutral" | "warning"
+}
+
+export interface MetadataMatchCandidate {
+  provider: string
+  target_type: MetadataMatchKind
+  source_id: string
+  title: string
+  original_title: string
+  release_date: string | null
+  year: number | null
+  overview: string
+  artwork_url: string
+  external_ids: MetadataExternalId[]
+  match: {
+    tier: MetadataMatchTier
+    reasons: MetadataMatchReason[]
+  }
+}
+
+export interface MetadataMatchSearchResult {
+  target: MetadataMatchTarget
+  connection: MetadataMatchConnection
+  query: string
+  year: number | null
+  page: number
+  next_page: number | null
+  results: MetadataMatchCandidate[]
+}
+
+export type MetadataPreviewStatus =
+  | "unchanged"
+  | "fill"
+  | "different"
+  | "add"
+  | "conflict"
+  | "missing"
+  | "locked"
+
+export interface MetadataPreviewField {
+  field: string
+  label: string
+  group: "identity" | "descriptive" | "relationships" | "external_ids"
+  kind: "text" | "longtext" | "date" | "year" | "rating" | "list" | "external_id"
+  current: unknown
+  proposed: unknown
+  status: MetadataPreviewStatus
+  selectable: boolean
+  default_selected: boolean
+  locked: boolean
+  current_source: string | null
+  note: string
+  additions?: string[]
+  result?: string[]
+  linked_fields?: string[]
+  linked_to?: string
+  territory?: string
+  namespace?: string
+}
+
+export interface MetadataPreviewArtwork {
+  url: string
+  kind: "poster" | "backdrop" | "logo" | "thumbnail" | "other"
+  width: number | null
+  height: number | null
+  language: string | null
+}
+
+export interface MetadataMatchPreview {
+  target: MetadataMatchTarget
+  connection: MetadataMatchConnection
+  source_id: string
+  territory: string
+  provider_metadata: {
+    title: string
+    original_title: string
+    year: number | null
+    overview: string
+    artwork: MetadataPreviewArtwork[]
+    [key: string]: unknown
+  }
+  fields: MetadataPreviewField[]
+  not_stored: { label: string; value: string; note: string }[]
+  summary: Partial<Record<MetadataPreviewStatus, number>>
+  target_revision: string
+  provider_snapshot: string
+}

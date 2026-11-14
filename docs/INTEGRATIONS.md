@@ -49,6 +49,41 @@ The normalized types live in `backend/metadata/providers/types.py`: `MetadataCan
 
 Search and detail retrieval never write catalog data. Applying provider metadata is a separate, reviewed step owned by the metadata services. `integrations.registry.metadata_provider_classes(target_type)` lists registered providers that declare a target; YouTube and TubeArchivist declare none and keep their existing known-ID lookups.
 
+## Metadata matching (alpha.5)
+
+Movies and series have a **Match** tab in the catalog item editor. It searches an assigned metadata provider, explains each candidate, and previews the provider's details beside the catalog's values. It is review only: matching never changes catalog metadata, field provenance, or change history.
+
+Read-only endpoints (GET only, owner-scoped; anything not owned is a 404):
+
+- `GET /api/metadata-match/<movie|series>/<id>/` returns the target, its eligible provider connections, and search defaults (current title and year).
+- `GET /api/metadata-match/<movie|series>/<id>/search/?connection=&query=&year=&page=` returns candidates with match hints.
+- `GET /api/metadata-match/<movie|series>/<id>/preview/?connection=&source_id=&territory=` returns a field-by-field comparison.
+
+**Eligibility.** A connection can serve a target only when it is enabled, owned by the library's owner, assigned to the target's library with the `metadata` capability, and its provider declares the target type. Other assigned connections are listed as unavailable with a reason, and no request is sent to them. With exactly one eligible connection it is used automatically; otherwise the request must name one.
+
+**Match hints.** Each candidate gets a tier (`strong`, `likely`, `possible`, `weak`, or `conflict`) and the reasons behind it: an external ID matching or conflicting, the title matching exactly, after normalization, or via the original title, and the year being the same, close, or different (with a possible-remake warning for the same title in a different year). Tiers are advisory labels, not probabilities, and never trigger an automatic change. A conflicting external ID always produces `conflict`.
+
+**Preview rules.** Each field row has a status, whether it can be selected, and whether it is selected by default:
+
+| Status | Meaning | Selectable | Default |
+| --- | --- | --- | --- |
+| `fill` | Catalog field is empty and the provider has a value | yes | selected |
+| `different` | Both have values and they differ | yes | not selected |
+| `add` | List field: the provider has entries the catalog lacks | yes | not selected |
+| `unchanged` | Same value | no | — |
+| `missing` | Provider didn't supply a value | no | — |
+| `locked` | Field is locked by a manual edit | no | — |
+| `conflict` | External ID differs from the catalog's | no | — |
+
+- Existing values, including local and manual edits, are kept unless the person chooses otherwise. Locked fields must be unlocked in the Metadata tab first.
+- Genres and studios only ever add entries; the preview shows the resulting list, and existing entries are never removed.
+- A movie's release date is offered only when the provider has a full date. Choosing it also selects the linked year so the two stay consistent.
+- The content rating uses one territory (`territory`, else the region from `language`, else `US`); every territory's rating is shown as an option.
+- Data the catalog has nowhere to store (movie runtime, series episode runtime, TV networks) is listed under "not stored" instead of being mapped onto another field.
+- `target_revision` and `provider_snapshot` fingerprint the catalog values, locks, and provider data that were shown, so a later apply step can refuse a stale review.
+
+**Errors and limits.** Provider failures return `{"detail": ..., "error": {"category", "message", "retryable"}}` with HTTP 400 (invalid request or unsupported target), 404 (provider has no such record), 429 (rate limited, with `Retry-After` when known), 504 (timeout), or 502 (other provider failures). Search and preview share a per-user budget, `LIBRARYFORGE_METADATA_PROVIDER_RATE` (default `60/min`). The provider's attribution notice is shown with its data.
+
 ## Failure behavior
 
 Integration failures must not change or remove managed media. Metadata and artwork lookups are enrichment-only operations.

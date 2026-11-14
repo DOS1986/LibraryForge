@@ -41,6 +41,10 @@ import {
 } from "@/components/ui/tabs"
 
 import {
+  MetadataMatchPanel,
+} from "@/components/catalog/MetadataMatchPanel"
+
+import {
   ScrollableDialogBody,
   ScrollableDialogContent,
   ScrollableDialogHeader,
@@ -2553,6 +2557,20 @@ export function CatalogItemEditorDialog({
                   </TabsTrigger>
 
                   {
+                    (
+                      detail.kind === "movie"
+                      || detail.kind === "series"
+                    )
+                    && (
+                      <TabsTrigger
+                        value="match"
+                      >
+                        Match
+                      </TabsTrigger>
+                    )
+                  }
+
+                  {
                     detail.versions.length
                     > 0
                     && (
@@ -2732,6 +2750,24 @@ export function CatalogItemEditorDialog({
                     }
                   />
                 </TabsContent>
+
+                {
+                  (
+                    detail.kind === "movie"
+                    || detail.kind === "series"
+                  )
+                  && (
+                    <TabsContent
+                      value="match"
+                      className="mt-5"
+                    >
+                      <MetadataMatchPanel
+                        kind={detail.kind}
+                        id={detail.id}
+                      />
+                    </TabsContent>
+                  )
+                }
 
                 <TabsContent
                   value="versions"

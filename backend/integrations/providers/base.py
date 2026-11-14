@@ -69,6 +69,8 @@ class ProviderDefinition:
     # this provider can search and describe. Empty means the provider only
     # supports its existing known-ID lookups (lookup_one/lookup_many).
     metadata_target_types: tuple[str, ...] = ()
+    # Notice the provider's terms require wherever its data is shown.
+    attribution: str = ""
 
 
 MAX_METADATA_QUERY_LENGTH = 200

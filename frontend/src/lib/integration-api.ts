@@ -29,6 +29,7 @@ export interface IntegrationProviderDefinition {
   credential_mode: IntegrationCredentialMode
   credential_summary: string
   metadata_target_types: MetadataTargetType[]
+  attribution: string
   fields: IntegrationFieldDefinition[]
 }
 

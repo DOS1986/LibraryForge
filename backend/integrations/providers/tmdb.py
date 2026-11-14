@@ -157,6 +157,7 @@ class TMDbProvider(IntegrationProvider):
             "including attribution and their non-commercial license."
         ),
         metadata_target_types=(MetadataTargetType.MOVIE.value, MetadataTargetType.SERIES.value),
+        attribution=TMDB_ATTRIBUTION,
     )
 
     # ------------------------------------------------------------------

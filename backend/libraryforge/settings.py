@@ -208,6 +208,15 @@ REST_FRAMEWORK = {
     ),
 
     "PAGE_SIZE": 100,
+
+    # Budget for endpoints that call external metadata providers (search and
+    # preview). Applied per user; provider-side limits still apply.
+    "DEFAULT_THROTTLE_RATES": {
+        "metadata_provider": env(
+            "LIBRARYFORGE_METADATA_PROVIDER_RATE",
+            default="60/min",
+        ),
+    },
 }
 
 

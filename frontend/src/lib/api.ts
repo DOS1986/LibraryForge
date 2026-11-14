@@ -17,6 +17,10 @@ import type {
   ManagementMode,
   MediaFile,
   MediaItemDetail,
+  MetadataMatchContext,
+  MetadataMatchKind,
+  MetadataMatchPreview,
+  MetadataMatchSearchResult,
   MetadataSource,
   NfoFile,
   NfoValidation,
@@ -1262,5 +1266,77 @@ export async function requestSystemRestart() {
     {
       method: "POST",
     },
+  )
+}
+
+
+// Metadata provider matching. GET only: these never change catalog data.
+
+function metadataMatchPath(
+  kind: MetadataMatchKind,
+  id: string,
+  action = "",
+) {
+  return (
+    `/api/metadata-match/${kind}/${id}/`
+    + (action ? `${action}/` : "")
+  )
+}
+
+
+function queryString(
+  params: Record<string, string | number | null | undefined>,
+) {
+  const search = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") {
+      search.set(key, String(value))
+    }
+  }
+
+  const text = search.toString()
+
+  return text ? `?${text}` : ""
+}
+
+
+export async function getMetadataMatchContext(
+  kind: MetadataMatchKind,
+  id: string,
+) {
+  return request<MetadataMatchContext>(
+    metadataMatchPath(kind, id),
+  )
+}
+
+
+export async function searchMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    query?: string
+    year?: string
+    page?: number
+  },
+) {
+  return request<MetadataMatchSearchResult>(
+    metadataMatchPath(kind, id, "search") + queryString(params),
+  )
+}
+
+
+export async function previewMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    source_id: string
+    territory?: string
+  },
+) {
+  return request<MetadataMatchPreview>(
+    metadataMatchPath(kind, id, "preview") + queryString(params),
   )
 }

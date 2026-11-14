@@ -19,6 +19,12 @@ pre-1.0 development.
 * Added TMDB error mapping to stable metadata error categories, one bounded inline retry for transient failures, `Retry-After` handling, and short-lived credential-scoped caching.
 * Added TMDB attribution to the provider description and a Credits section on the System page.
 * Added mocked TMDB adapter tests covering normalization, malformed and partial responses, error mapping, retries, caching, and credential handling.
+* Added read-only metadata matching for movies and series: owner-scoped context, search, and preview endpoints that never change catalog metadata, provenance, or history.
+* Added explainable match hints (title, original title, year, external-ID agreement or conflict, possible remakes) with advisory tiers.
+* Added a field-level metadata preview that keeps existing and manually edited values by default, suggests only empty fields, blocks locked fields and conflicting IDs, only adds list entries, keeps year and release date consistent, and fingerprints the reviewed state for a later apply step.
+* Added a Match tab to the movie and series editor with provider search, candidate selection, comparison, field choices, and provider attribution.
+* Added provider attribution to provider definitions and the provider catalog API.
+* Added a per-user rate limit for metadata provider requests (`LIBRARYFORGE_METADATA_PROVIDER_RATE`, default `60/min`).
 
 ### Changed
 
