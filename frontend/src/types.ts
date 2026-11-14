@@ -1106,3 +1106,69 @@ export interface MetadataMatchApplyResult {
   }
   detail: CatalogEditorDetail
 }
+
+
+// Library content-rating coverage and suggestions
+
+export type RatingStatus = "rated" | "missing" | "unrecognized"
+
+export interface RatingCounts {
+  total: number
+  rated: number
+  missing: number
+  unrecognized: number
+}
+
+export interface RatingCoverageRow {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  year: number | null
+  content_rating: string
+  status: RatingStatus
+  source: string | null
+  source_label: string | null
+  locked: boolean
+}
+
+export interface RatingCoverage {
+  library_id: string
+  kind: MetadataMatchKind
+  status: RatingStatus | "all"
+  summary: Record<MetadataMatchKind, RatingCounts>
+  recognized_ratings: { movie: string[]; tv: string[] }
+  page: number
+  page_size: number
+  total: number
+  next_page: number | null
+  results: RatingCoverageRow[]
+}
+
+export type RatingSuggestionStatus =
+  | "suggested"
+  | "needs_review"
+  | "no_rating"
+  | "locked"
+  | "unchanged"
+  | "error"
+
+export interface RatingSuggestion {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  year: number | null
+  content_rating: string
+  status: RatingSuggestionStatus
+  message: string
+  candidate?: MetadataMatchCandidate | null
+  rating?: string | null
+  territory?: string
+  apply?: Omit<MetadataMatchApplyRequest, "operation_id">
+}
+
+export interface RatingSuggestions {
+  library_id: string
+  kind: MetadataMatchKind
+  connection: MetadataMatchConnection
+  results: RatingSuggestion[]
+}

@@ -24,6 +24,8 @@ import type {
   MetadataMatchPreview,
   MetadataMatchSearchResult,
   MetadataSource,
+  RatingCoverage,
+  RatingSuggestions,
   NfoFile,
   NfoValidation,
   OutputProfile,
@@ -1359,5 +1361,35 @@ export async function applyMetadataMatch(
       method: "POST",
       body: JSON.stringify(body),
     },
+  )
+}
+
+
+export async function getLibraryRatings(
+  libraryId: string,
+  params: {
+    kind: MetadataMatchKind
+    status?: string
+    search?: string
+    page?: number
+    page_size?: number
+  },
+) {
+  return request<RatingCoverage>(
+    `/api/libraries/${libraryId}/ratings/` + queryString(params),
+  )
+}
+
+
+// Read-only: searches the provider and returns suggestions. Each rating is
+// applied separately, through applyMetadataMatch, after the user confirms it.
+export async function getRatingSuggestions(
+  libraryId: string,
+  kind: MetadataMatchKind,
+  ids: string[],
+) {
+  return request<RatingSuggestions>(
+    `/api/libraries/${libraryId}/ratings/suggestions/`
+    + queryString({ kind, ids: ids.join(",") }),
   )
 }

@@ -58,6 +58,10 @@ from media.views import (
     MediaItemViewSet,
 )
 
+from metadata.rating_views import (
+    library_rating_suggestions_view,
+    library_ratings_view,
+)
 from metadata.match_views import (
     match_apply_view,
     match_context_view,
@@ -290,6 +294,18 @@ urlpatterns = [
         "api/catalog-editor/versions/<uuid:version_id>/make-primary/",
         media_version_make_primary,
         name="catalog-editor-version-primary",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/",
+        library_ratings_view,
+        name="library-ratings",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/suggestions/",
+        library_rating_suggestions_view,
+        name="library-rating-suggestions",
     ),
 
     path(

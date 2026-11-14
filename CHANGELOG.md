@@ -30,6 +30,9 @@ pre-1.0 development.
 * Added provider provenance: applied fields record the provider as their source with a provider/target/ID reference and are locked against library scans, while a later reviewed match can still replace them and manual edits take priority.
 * Added provider change sets to metadata history with the applied fields, previous values, actor, and secret-free apply details.
 * Added Apply and confirmation steps to the Match tab, with stale-review recovery.
+* Added a library Ratings tab with content-rating coverage for movies and TV series: counts and filters for rated, missing, and unrecognized ratings, title search, and each rating's source.
+* Added reviewed rating suggestions: LibraryForge searches the metadata provider for every unrated item on the current page (in sequential batches of 10, with progress and Stop), suggests a rating only for confident matches, and applies each rating only when confirmed, through the validated apply path.
+* Added a choice of 25, 50, 100, or 200 items per page on the Ratings tab, remembered in the browser, with first/previous/next/last navigation.
 
 ### Changed
 

@@ -95,6 +95,31 @@ Provenance: each applied field's `CanonicalFieldState` gets source `provider`, `
 
 **Errors and limits.** Provider failures return `{"detail": ..., "error": {"category", "message", "retryable"}}` with HTTP 400 (invalid request or unsupported target), 404 (provider has no such record), 429 (rate limited, with `Retry-After` when known), 504 (timeout), or 502 (other provider failures). Search, preview, and apply share a per-user budget, `LIBRARYFORGE_METADATA_PROVIDER_RATE` (default `60/min`). The provider's attribution notice is shown with its data.
 
+## Content ratings (alpha.5)
+
+Each library has a **Ratings** tab for parental-control coverage. It counts and lists movies and TV series by rating status:
+
+- `rated`: a recognized US rating. Movies use MPA ratings (`G`, `PG`, `PG-13`, `R`, `NC-17`) and TV uses TV Parental Guidelines (`TV-Y`, `TV-Y7`, `TV-Y7-FV`, `TV-G`, `TV-PG`, `TV-14`, `TV-MA`). Both sets count as recognized for either kind, because media servers such as Jellyfin compare them on one scale.
+- `missing`: no rating.
+- `unrecognized`: some other value, such as a UK `15` or `NR`, which a media server may not be able to filter on.
+
+Endpoints (GET only, owner-scoped; neither changes catalog data):
+
+- `GET /api/libraries/<id>/ratings/?kind=<movie|series>&status=<missing|unrecognized|rated|all>&search=&page=&page_size=` returns per-kind counts and a page of items with their rating, status, and rating source/lock.
+- `GET /api/libraries/<id>/ratings/suggestions/?kind=<movie|series>&ids=<id,...>` takes up to 10 items from that library. For each one it searches the library's metadata provider with the item's title and year (retrying without the year if nothing is found), and only uses a `strong` or `likely` match. It then builds the normal match preview and returns one of:
+  - `suggested`, with the rating and the exact apply payload for the `content_rating` field
+  - `needs_review` (no confident match)
+  - `no_rating` (the provider has no rating for the territory; other countries are listed)
+  - `locked` (manual lock)
+  - `unchanged`
+  - `error` (provider failure, reported per item)
+
+The Ratings tab's **Find ratings** button covers every unrated item on the current page (25, 50, 100, or 200 per page) by sending these requests in sequential batches of 10, with progress and a Stop button. Each batch counts once against the metadata provider rate limit, as does each Apply; raise `LIBRARYFORGE_METADATA_PROVIDER_RATE` if you work through large pages quickly.
+
+A suggested rating is saved only when the person clicks **Apply** for that item. That call goes through the metadata-match apply endpoint, so the stale-review checks, provenance, history, scan protection, and duplicate-submission handling all apply. Items that need review can be opened in the catalog editor's Match tab from the list. Suggestions share the metadata provider rate limit.
+
+Episodes are not rated individually here. Media servers generally apply a series' rating to its episodes, but writing ratings into NFO files for Jellyfin is a separate step.
+
 ## Failure behavior
 
 Integration failures must not change or remove managed media. Metadata and artwork lookups are enrichment-only operations.

@@ -18,6 +18,8 @@ import {
   searchMetadataMatch,
 } from "@/lib/api"
 
+import { newOperationId } from "@/lib/ids"
+
 import type {
   CatalogEditorDetail,
   MetadataMatchApplyResult,
@@ -87,28 +89,6 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border bg-background px-3 text-sm"
-
-
-// crypto.randomUUID() is only available in secure contexts (HTTPS or
-// localhost); LibraryForge is often reached over plain HTTP on a LAN.
-function newOperationId() {
-  if (typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
-  }
-
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")
-
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-")
-}
 
 
 function errorMessage(error: unknown, fallback: string) {

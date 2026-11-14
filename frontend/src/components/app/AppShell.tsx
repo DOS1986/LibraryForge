@@ -98,6 +98,13 @@ const librarySections = [
   },
   {
     path:
+      "ratings",
+
+    label:
+      "Ratings",
+  },
+  {
+    path:
       "projections",
 
     label:

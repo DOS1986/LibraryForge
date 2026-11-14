@@ -72,6 +72,10 @@ import {
 } from "@/pages/libraries/LibraryNeedsAttentionPage"
 
 import {
+  LibraryRatingsPage,
+} from "@/pages/libraries/LibraryRatingsPage"
+
+import {
   LibraryOverviewPage,
 } from "@/pages/libraries/LibraryOverviewPage"
 
@@ -248,6 +252,11 @@ function App() {
               <Route
                 path="attention"
                 element={<LibraryNeedsAttentionPage />}
+              />
+
+              <Route
+                path="ratings"
+                element={<LibraryRatingsPage />}
               />
 
               <Route
