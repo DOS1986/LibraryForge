@@ -59,6 +59,7 @@ from media.views import (
 )
 
 from metadata.match_views import (
+    match_apply_view,
     match_context_view,
     match_preview_view,
     match_search_view,
@@ -307,6 +308,12 @@ urlpatterns = [
         "api/metadata-match/<str:target_type>/<uuid:target_id>/preview/",
         match_preview_view,
         name="metadata-match-preview",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/apply/",
+        match_apply_view,
+        name="metadata-match-apply",
     ),
 
     path(

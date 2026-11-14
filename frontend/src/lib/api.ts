@@ -17,6 +17,8 @@ import type {
   ManagementMode,
   MediaFile,
   MediaItemDetail,
+  MetadataMatchApplyRequest,
+  MetadataMatchApplyResult,
   MetadataMatchContext,
   MetadataMatchKind,
   MetadataMatchPreview,
@@ -1338,5 +1340,24 @@ export async function previewMetadataMatch(
 ) {
   return request<MetadataMatchPreview>(
     metadataMatchPath(kind, id, "preview") + queryString(params),
+  )
+}
+
+
+// The only metadata-match call that changes the catalog. The server rebuilds
+// and re-validates the reviewed preview; only field names are sent.
+export async function applyMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  body: MetadataMatchApplyRequest,
+) {
+  await ensureCsrf()
+
+  return request<MetadataMatchApplyResult>(
+    metadataMatchPath(kind, id, "apply"),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   )
 }

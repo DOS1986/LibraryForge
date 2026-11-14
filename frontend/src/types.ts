@@ -690,6 +690,7 @@ export interface CanonicalFieldState {
     | "tubearchivist"
     | "yt_dlp"
     | "system"
+    | "provider"
   source_label: string
   source_ref: string
   value_snapshot: unknown
@@ -711,7 +712,9 @@ export interface MetadataChangeSet {
   source:
     | "manual"
     | "system"
+    | "provider"
   source_label: string
+  source_ref?: string
   changes: Record<
     string,
     {
@@ -1076,4 +1079,30 @@ export interface MetadataMatchPreview {
   summary: Partial<Record<MetadataPreviewStatus, number>>
   target_revision: string
   provider_snapshot: string
+}
+
+export interface MetadataMatchApplyRequest {
+  connection: string
+  source_id: string
+  territory: string
+  fields: string[]
+  target_revision: string
+  provider_snapshot: string
+  operation_id: string
+}
+
+export interface MetadataMatchApplyResult {
+  applied: boolean
+  replayed: boolean
+  change_set: {
+    id: string
+    source: string
+    source_ref: string
+    operation_id: string | null
+    fields: string[]
+    changes: Record<string, { old: unknown; new: unknown }>
+    note: string
+    created_at: string
+  }
+  detail: CatalogEditorDetail
 }

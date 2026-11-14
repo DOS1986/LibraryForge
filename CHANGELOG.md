@@ -25,11 +25,21 @@ pre-1.0 development.
 * Added a Match tab to the movie and series editor with provider search, candidate selection, comparison, field choices, and provider attribution.
 * Added provider attribution to provider definitions and the provider catalog API.
 * Added a per-user rate limit for metadata provider requests (`LIBRARYFORGE_METADATA_PROVIDER_RATE`, default `60/min`).
+* Added applying reviewed provider metadata to movies and series. The server rebuilds the preview, refuses stale reviews, accepts only selectable field names, keeps year and release date consistent, and writes values, provenance, and history in one transaction.
+* Added duplicate-submission protection for provider applies using a client-generated operation ID.
+* Added provider provenance: applied fields record the provider as their source with a provider/target/ID reference and are locked against library scans, while a later reviewed match can still replace them and manual edits take priority.
+* Added provider change sets to metadata history with the applied fields, previous values, actor, and secret-free apply details.
+* Added Apply and confirmation steps to the Match tab, with stale-review recovery.
 
 ### Changed
 
 * Provider HTTP errors now record a failure reason (timeout, unreachable, invalid JSON, oversized response) and any `Retry-After` delay so adapters can classify failures without parsing messages.
 * Integration connection errors from metadata providers now show the provider's sanitized message.
+* Metadata history now includes each change set's source reference.
+
+### Database
+
+* Added migration `catalog.0007_metadata_provider_provenance`: a `provider` source for field provenance and change sets, plus `source_ref`, `operation_id` (unique), and `details` on change sets. Additive only.
 
 ## [0.1.0-alpha.4] - 2026-08-11
 

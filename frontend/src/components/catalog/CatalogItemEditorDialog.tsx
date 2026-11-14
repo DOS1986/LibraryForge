@@ -2764,6 +2764,15 @@ export function CatalogItemEditorDialog({
                       <MetadataMatchPanel
                         kind={detail.kind}
                         id={detail.id}
+                        onApplied={
+                          updated => {
+                            setDetail(
+                              updated
+                            )
+
+                            void onChanged?.()
+                          }
+                        }
                       />
                     </TabsContent>
                   )

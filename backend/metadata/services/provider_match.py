@@ -99,12 +99,18 @@ def _movie_year(item: MediaItem) -> int | None:
     return item.release_date.year if item.release_date else None
 
 
-def resolve_target(*, user, target_type: str, target_id) -> ResolvedTarget:
+def _queryset(model, for_update: bool):
+    queryset = model.objects.select_related("library")
+    # Lock only the target row (not the joined library) while applying.
+    return queryset.select_for_update(of=("self",)) if for_update else queryset
+
+
+def resolve_target(*, user, target_type: str, target_id, for_update: bool = False) -> ResolvedTarget:
     """Load a movie or series owned by ``user``; anything else is a 404."""
 
     if target_type == MetadataTargetType.MOVIE.value:
         item = get_object_or_404(
-            MediaItem.objects.select_related("library"),
+            _queryset(MediaItem, for_update),
             id=target_id,
             library__owner=user,
             media_type=MediaItem.MediaType.MOVIE,
@@ -130,7 +136,7 @@ def resolve_target(*, user, target_type: str, target_id) -> ResolvedTarget:
 
     if target_type == MetadataTargetType.SERIES.value:
         series = get_object_or_404(
-            Series.objects.select_related("library"),
+            _queryset(Series, for_update),
             id=target_id,
             library__owner=user,
         )
@@ -300,21 +306,48 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def blocks_provider_update(state: CanonicalFieldState | None) -> bool:
+    """Whether a field state stops a provider value from being offered.
+
+    Manual (and other non-provider) locks always block. A lock written by a
+    previous provider apply protects the value from library scans, but a new
+    reviewed provider match may still replace it.
+    """
+
+    return bool(state and state.locked and state.source != CanonicalFieldState.Source.PROVIDER)
+
+
+def field_states(resolved: ResolvedTarget) -> dict[str, CanonicalFieldState]:
+    return {
+        state.field_name: state
+        for state in CanonicalFieldState.objects.filter(
+            target_type=resolved.field_state_type,
+            target_id=resolved.obj.id,
+        )
+    }
+
+
+def target_revision(resolved: ResolvedTarget, states: dict[str, CanonicalFieldState] | None = None) -> str:
+    """Fingerprint of the catalog values and locks a preview was built from."""
+
+    states = field_states(resolved) if states is None else states
+    return _digest(
+        {
+            "current": resolved.current,
+            "locks": sorted(f"{name}:{state.source}" for name, state in states.items() if state.locked),
+        }
+    )
+
+
 class _PreviewBuilder:
     def __init__(self, resolved: ResolvedTarget):
         self.resolved = resolved
-        self.states = {
-            state.field_name: state
-            for state in CanonicalFieldState.objects.filter(
-                target_type=resolved.field_state_type,
-                target_id=resolved.obj.id,
-            )
-        }
+        self.states = field_states(resolved)
         self.fields: list[dict[str, Any]] = []
 
     def _state(self, field_name: str) -> tuple[bool, str | None]:
         state = self.states.get(field_name.split(".")[0])
-        return (bool(state and state.locked), state.source if state else None)
+        return (blocks_provider_update(state), state.source if state else None)
 
     def scalar(
         self,
@@ -359,6 +392,8 @@ class _PreviewBuilder:
         }
         if status == STATUS_LOCKED:
             row["note"] = "Locked by a manual edit. Unlock it in the Metadata tab to use the provider's value."
+        elif source == CanonicalFieldState.Source.PROVIDER and not row["note"]:
+            row["note"] = "Currently from a previous provider match."
         self.fields.append(row)
         return row
 
@@ -585,12 +620,7 @@ def build_preview(
         # Fingerprints let a later apply step refuse a stale review: the
         # catalog values/locks and the provider data must still match what
         # was shown here.
-        "target_revision": _digest(
-            {
-                "current": resolved.current,
-                "locks": sorted(name for name, state in builder.states.items() if state.locked),
-            }
-        ),
+        "target_revision": target_revision(resolved, builder.states),
         "provider_snapshot": _digest(detail.to_dict()),
     }
 

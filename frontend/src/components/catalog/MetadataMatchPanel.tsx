@@ -11,12 +11,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 import {
+  ApiError,
+  applyMetadataMatch,
   getMetadataMatchContext,
   previewMetadataMatch,
   searchMetadataMatch,
 } from "@/lib/api"
 
 import type {
+  CatalogEditorDetail,
+  MetadataMatchApplyResult,
   MetadataMatchCandidate,
   MetadataMatchContext,
   MetadataMatchKind,
@@ -31,6 +35,7 @@ import type {
 interface MetadataMatchPanelProps {
   kind: MetadataMatchKind
   id: string
+  onApplied?: (detail: CatalogEditorDetail) => void
 }
 
 
@@ -66,8 +71,44 @@ const GROUP_ORDER: MetadataPreviewField["group"][] = [
   "external_ids",
 ]
 
+const SOURCE_LABELS: Record<string, string> = {
+  manual: "manual edit",
+  provider: "metadata provider",
+  nfo: "NFO",
+  filename: "filename",
+  folder: "folder structure",
+  ffprobe: "ffprobe",
+  embedded: "embedded tags",
+  tubearchivist: "TubeArchivist",
+  tubearchivist_path: "TubeArchivist path",
+  yt_dlp: "yt-dlp",
+  system: "system",
+}
+
 const SELECT_CLASS =
   "h-9 w-full rounded-md border bg-background px-3 text-sm"
+
+
+// crypto.randomUUID() is only available in secure contexts (HTTPS or
+// localhost); LibraryForge is often reached over plain HTTP on a LAN.
+function newOperationId() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")
+
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-")
+}
 
 
 function errorMessage(error: unknown, fallback: string) {
@@ -214,7 +255,7 @@ function PreviewRow({
         </div>
         {row.current_source && (
           <div className="text-xs text-muted-foreground">
-            Current source: {row.current_source}
+            Current source: {SOURCE_LABELS[row.current_source] ?? row.current_source}
           </div>
         )}
       </td>
@@ -248,6 +289,7 @@ function PreviewRow({
 export function MetadataMatchPanel({
   kind,
   id,
+  onApplied,
 }: MetadataMatchPanelProps) {
   const [context, setContext] = useState<MetadataMatchContext | null>(null)
   const [contextError, setContextError] = useState<string | null>(null)
@@ -264,6 +306,13 @@ export function MetadataMatchPanel({
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [preview, setPreview] = useState<MetadataMatchPreview | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const [previewCandidate, setPreviewCandidate] = useState<MetadataMatchCandidate | null>(null)
+  const [operationId, setOperationId] = useState("")
+  const [confirming, setConfirming] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState<{ message: string; stale: boolean } | null>(null)
+  const [applied, setApplied] = useState<MetadataMatchApplyResult | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -336,6 +385,10 @@ export function MetadataMatchPanel({
     setPreview(null)
     setPreviewError(null)
     setPreviewLoading(true)
+    setPreviewCandidate(candidate)
+    setConfirming(false)
+    setApplyError(null)
+    setApplied(null)
 
     try {
       const data = await previewMetadataMatch(kind, id, {
@@ -345,6 +398,9 @@ export function MetadataMatchPanel({
 
       setPreview(data)
       setSelected(new Set(data.fields.filter(row => row.default_selected).map(row => row.field)))
+      // One idempotency key per reviewed preview: retries of the same apply
+      // return the recorded result instead of applying twice.
+      setOperationId(newOperationId())
     } catch (error) {
       setPreviewError(errorMessage(error, "Unable to load provider details."))
     } finally {
@@ -356,6 +412,8 @@ export function MetadataMatchPanel({
     if (!preview) {
       return
     }
+
+    setConfirming(false)
 
     setSelected(current => {
       const next = new Set(current)
@@ -383,6 +441,41 @@ export function MetadataMatchPanel({
   function closePreview() {
     setPreview(null)
     setPreviewError(null)
+    setConfirming(false)
+    setApplyError(null)
+  }
+
+  async function applyChanges() {
+    if (!preview || !selected.size) {
+      return
+    }
+
+    setApplying(true)
+    setApplyError(null)
+
+    try {
+      const result = await applyMetadataMatch(kind, id, {
+        connection: preview.connection.connection_id,
+        source_id: preview.source_id,
+        territory: preview.territory,
+        fields: Array.from(selected),
+        target_revision: preview.target_revision,
+        provider_snapshot: preview.provider_snapshot,
+        operation_id: operationId,
+      })
+
+      setApplied(result)
+      setPreview(null)
+      setConfirming(false)
+      onApplied?.(result.detail)
+    } catch (error) {
+      setApplyError({
+        message: errorMessage(error, "Unable to apply these changes."),
+        stale: error instanceof ApiError && error.status === 409,
+      })
+    } finally {
+      setApplying(false)
+    }
   }
 
   if (contextError) {
@@ -416,8 +509,29 @@ export function MetadataMatchPanel({
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
         Search a metadata provider and compare its details with this {kind === "movie" ? "movie" : "series"}.
-        This is review only: nothing in your catalog changes here.
+        Nothing in your catalog changes until you review the details and confirm.
       </p>
+
+      {applied && !preview && (
+        <section className="space-y-2 rounded-md border p-3 text-sm" role="status">
+          <h3 className="font-semibold">
+            {applied.change_set.fields.length
+              ? `Applied ${applied.change_set.fields.length} change${applied.change_set.fields.length === 1 ? "" : "s"}`
+              : "No changes were needed"}
+          </h3>
+          {applied.change_set.fields.length > 0 && (
+            <ul className="list-disc pl-5">
+              {applied.change_set.fields.map(field => (
+                <li key={field}>{field.replace(/_/g, " ")}</li>
+              ))}
+            </ul>
+          )}
+          <p className="text-muted-foreground">
+            {applied.change_set.note} These fields now list the provider as their source and appear in
+            the History tab. Library scans won't overwrite them, and your own edits still take priority.
+          </p>
+        </section>
+      )}
 
       {!preview && (
         <>
@@ -601,9 +715,41 @@ export function MetadataMatchPanel({
             ) : (
               <p className="text-muted-foreground">No fields selected.</p>
             )}
-            <p className="text-muted-foreground">
-              Review only. LibraryForge hasn't changed anything, and applying these choices isn't available yet.
-            </p>
+            {applyError && (
+              <div className="space-y-2" role="alert">
+                <p className="text-destructive">{applyError.message}</p>
+                {applyError.stale && previewCandidate && (
+                  <Button variant="outline" onClick={() => void openPreview(previewCandidate)}>
+                    Review again
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {!confirming ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={!selectedRows.length || applying} onClick={() => setConfirming(true)}>
+                  Apply {selectedRows.length} change{selectedRows.length === 1 ? "" : "s"}
+                </Button>
+                <span className="text-muted-foreground">Nothing changes until you confirm.</span>
+              </div>
+            ) : (
+              <div className="space-y-2 rounded-md bg-muted/50 p-3">
+                <p>
+                  Update this {kind === "movie" ? "movie" : "series"} with the {selectedRows.length} change
+                  {selectedRows.length === 1 ? "" : "s"} listed above from {preview.connection.provider_label}?
+                  Fields you didn&apos;t select stay as they are.
+                </p>
+                <div className="flex gap-2">
+                  <Button disabled={applying} onClick={() => void applyChanges()}>
+                    {applying ? "Applying..." : "Confirm and apply"}
+                  </Button>
+                  <Button variant="outline" disabled={applying} onClick={() => setConfirming(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}

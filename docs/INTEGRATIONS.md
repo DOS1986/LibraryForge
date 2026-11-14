@@ -51,13 +51,14 @@ Search and detail retrieval never write catalog data. Applying provider metadata
 
 ## Metadata matching (alpha.5)
 
-Movies and series have a **Match** tab in the catalog item editor. It searches an assigned metadata provider, explains each candidate, and previews the provider's details beside the catalog's values. It is review only: matching never changes catalog metadata, field provenance, or change history.
+Movies and series have a **Match** tab in the catalog item editor. It searches an assigned metadata provider, explains each candidate, previews the provider's details beside the catalog's values, and applies only the fields the person chooses and confirms. Search, context, and preview never change catalog metadata, field provenance, or change history; only the apply endpoint writes.
 
 Read-only endpoints (GET only, owner-scoped; anything not owned is a 404):
 
 - `GET /api/metadata-match/<movie|series>/<id>/` returns the target, its eligible provider connections, and search defaults (current title and year).
 - `GET /api/metadata-match/<movie|series>/<id>/search/?connection=&query=&year=&page=` returns candidates with match hints.
 - `GET /api/metadata-match/<movie|series>/<id>/preview/?connection=&source_id=&territory=` returns a field-by-field comparison.
+- `POST /api/metadata-match/<movie|series>/<id>/apply/` applies chosen fields from a reviewed preview (see below).
 
 **Eligibility.** A connection can serve a target only when it is enabled, owned by the library's owner, assigned to the target's library with the `metadata` capability, and its provider declares the target type. Other assigned connections are listed as unavailable with a reason, and no request is sent to them. With exactly one eligible connection it is used automatically; otherwise the request must name one.
 
@@ -80,9 +81,19 @@ Read-only endpoints (GET only, owner-scoped; anything not owned is a 404):
 - A movie's release date is offered only when the provider has a full date. Choosing it also selects the linked year so the two stay consistent.
 - The content rating uses one territory (`territory`, else the region from `language`, else `US`); every territory's rating is shown as an option.
 - Data the catalog has nowhere to store (movie runtime, series episode runtime, TV networks) is listed under "not stored" instead of being mapped onto another field.
-- `target_revision` and `provider_snapshot` fingerprint the catalog values, locks, and provider data that were shown, so a later apply step can refuse a stale review.
+- `target_revision` and `provider_snapshot` fingerprint the catalog values, locks, and provider data that were shown, so apply can refuse a stale review.
+- A field locked by a previous provider apply does not block a new match; manual (and other) locks always do.
 
-**Errors and limits.** Provider failures return `{"detail": ..., "error": {"category", "message", "retryable"}}` with HTTP 400 (invalid request or unsupported target), 404 (provider has no such record), 429 (rate limited, with `Retry-After` when known), 504 (timeout), or 502 (other provider failures). Search and preview share a per-user budget, `LIBRARYFORGE_METADATA_PROVIDER_RATE` (default `60/min`). The provider's attribution notice is shown with its data.
+**Applying a reviewed preview.** The request carries only identifiers and field *names*: `connection`, `source_id`, `territory`, `fields`, `target_revision`, `provider_snapshot`, and a client-generated `operation_id`. Values in the request are ignored. The server:
+
+1. Returns the recorded result if `operation_id` was already used for the same user, target, and plan; a reused ID with a different plan is refused (`409`, `operation_reused`).
+2. Rebuilds the preview, retrieving provider data outside any database transaction, and refuses the apply if the provider data (`409`, `provider_changed`) or the item's values or locks (`409`, `target_changed`) no longer match what was reviewed.
+3. Accepts only fields the rebuilt preview marks selectable (`400` otherwise). Choosing a movie's release date brings its year along; a year that would disagree with the release date, or a last-aired year before the first-aired year, is refused.
+4. In one transaction, locks the item row, re-checks its revision, writes the server-side values, and records provenance and history. Any failure rolls back all of it.
+
+Provenance: each applied field's `CanonicalFieldState` gets source `provider`, `source_ref` `<provider>:<movie|series>:<source id>`, and is **locked**, because library scans rewrite unlocked title, year, sort title, and first-aired year from filenames and folders. A later reviewed match can still replace a provider-locked value, and a manual edit takes over the field as usual. Each apply also creates a `MetadataChangeSet` with source `provider`, the old and new value of each applied field, the actor, the `operation_id`, and secret-free `details` (provider, connection, source ID, territory, retrieval time, requested and applied fields, and the reviewed fingerprints). It appears in the History tab. There is no automatic undo; earlier values are kept in the change set.
+
+**Errors and limits.** Provider failures return `{"detail": ..., "error": {"category", "message", "retryable"}}` with HTTP 400 (invalid request or unsupported target), 404 (provider has no such record), 429 (rate limited, with `Retry-After` when known), 504 (timeout), or 502 (other provider failures). Search, preview, and apply share a per-user budget, `LIBRARYFORGE_METADATA_PROVIDER_RATE` (default `60/min`). The provider's attribution notice is shown with its data.
 
 ## Failure behavior
 
