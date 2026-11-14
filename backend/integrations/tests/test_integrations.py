@@ -62,7 +62,7 @@ class ApplicationCredentialTests(SimpleTestCase):
 class ProviderRegistryTests(SimpleTestCase):
     def test_registry_has_no_acquisition_capability(self):
         catalog = provider_catalog()
-        self.assertEqual({row["key"] for row in catalog}, {"youtube", "tubearchivist"})
+        self.assertEqual({row["key"] for row in catalog}, {"youtube", "tubearchivist", "tmdb"})
         for row in catalog:
             self.assertNotIn("acquisition", row["capabilities"])
             self.assertNotIn("download", row["capabilities"])

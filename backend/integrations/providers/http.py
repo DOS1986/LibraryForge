@@ -19,16 +19,46 @@ MAX_PROVIDER_JSON_BYTES = (
 )
 
 
+MAX_RETRY_AFTER_SECONDS = 3600
+
+
 class ProviderHttpError(
     RuntimeError
 ):
+    """A sanitized provider transport failure.
+
+    ``reason`` is one of ``http``, ``timeout``, ``unreachable``,
+    ``too_large``, ``invalid_json`` or ``invalid_url`` so adapters can map
+    failures to stable categories without parsing messages.
+    """
+
     def __init__(
         self,
         message: str,
         status: int | None = None,
+        *,
+        reason: str = "http",
+        retry_after: int | None = None,
     ):
         super().__init__(message)
         self.status = status
+        self.reason = reason
+        self.retry_after = retry_after
+
+
+def _retry_after_seconds(
+    headers,
+) -> int | None:
+    # Only the delta-seconds form is honored; HTTP-date values are ignored.
+    value = str(
+        (headers or {}).get("Retry-After") or ""
+    ).strip()
+    if not value.isdigit():
+        return None
+    return min(
+        int(value),
+        MAX_RETRY_AFTER_SECONDS,
+    )
 
 
 class _NoRedirectHandler(
@@ -60,7 +90,8 @@ def request_json(
         )
     except ValueError as exc:
         raise ProviderHttpError(
-            "Remote service URL is invalid."
+            "Remote service URL is invalid.",
+            reason="invalid_url",
         ) from exc
 
     if (
@@ -73,7 +104,8 @@ def request_json(
         or parsed.password
     ):
         raise ProviderHttpError(
-            "Remote service URL is invalid."
+            "Remote service URL is invalid.",
+            reason="invalid_url",
         )
 
     request = Request(
@@ -109,6 +141,9 @@ def request_json(
                 f"HTTP {exc.code}."
             ),
             status=exc.code,
+            retry_after=_retry_after_seconds(
+                exc.headers
+            ),
         ) from exc
 
     except (
@@ -116,8 +151,24 @@ def request_json(
         TimeoutError,
         OSError,
     ) as exc:
+        timed_out = isinstance(
+            exc,
+            TimeoutError,
+        ) or isinstance(
+            getattr(exc, "reason", None),
+            TimeoutError,
+        )
         raise ProviderHttpError(
-            "Unable to reach remote service."
+            (
+                "Remote service timed out."
+                if timed_out
+                else "Unable to reach remote service."
+            ),
+            reason=(
+                "timeout"
+                if timed_out
+                else "unreachable"
+            ),
         ) from exc
 
     if (
@@ -126,7 +177,8 @@ def request_json(
     ):
         raise ProviderHttpError(
             "Remote service response exceeded "
-            "the 10 MB limit."
+            "the 10 MB limit.",
+            reason="too_large",
         )
 
     try:
@@ -141,5 +193,6 @@ def request_json(
         json.JSONDecodeError,
     ) as exc:
         raise ProviderHttpError(
-            "Remote service returned invalid JSON."
+            "Remote service returned invalid JSON.",
+            reason="invalid_json",
         ) from exc

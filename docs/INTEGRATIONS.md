@@ -90,6 +90,25 @@ The TubeArchivist adapter connects over HTTP(S) with the user's TubeArchivist AP
 
 The integration is read-only from LibraryForge's perspective. It does not manage TubeArchivist subscriptions, download queues, reindex operations, or deletion.
 
+## Alpha 0.1.0-alpha.5 providers
+
+### TMDB
+
+Capabilities: `metadata`.
+Metadata targets: `movie`, `series`.
+Credential mode: `user`.
+
+The TMDB adapter (`integrations/providers/tmdb.py`) searches The Movie Database for movies and TV series and returns normalized candidates and details. It does not write catalog metadata; applying provider data is a later, reviewed step.
+
+- **Credential.** Each installation supplies its own TMDB *API Read Access Token* (themoviedb.org → Settings → API). It is stored encrypted and sent only from the backend as `Authorization: Bearer`, so it never appears in request URLs or logs of URLs. The connection test calls the small `/3/configuration` endpoint.
+- **Search.** Movies use `/3/search/movie` with `year`; series use `/3/search/tv` with `first_air_date_year`. Adult results are excluded. TMDB pages run from 1 to 500. Results keep TMDB's order; malformed individual results are skipped rather than failing the search.
+- **Details.** `/3/movie/{id}` and `/3/tv/{id}` with `append_to_response` for external IDs, certifications/content ratings, and images, so one request returns everything a preview needs.
+- **Field mapping.** Production companies map to `studios` and TV networks to `networks` (kept separate). Movie certifications come from `release_dates`, preferring the theatrical release per country; series ratings come from `content_ratings`. Audience scores such as `vote_average` are never mapped to content ratings. A series' `runtime_minutes` is its typical episode runtime (the first `episode_run_time` value). A series has an `end_date` only when TMDB reports it as Ended or Canceled. External IDs include `tmdb`, and `imdb`, `tvdb`, and `wikidata` when TMDB supplies valid values. Invalid dates and values are treated as missing.
+- **Artwork.** Posters, backdrops, and logos become `ProviderArtwork` references at `https://image.tmdb.org/t/p/original/...` with TMDB's dimensions and language. Search candidates use a `w342` poster. These are references only; nothing is downloaded or selected in this milestone slice.
+- **Errors and retries.** HTTP 401/403 → `invalid_credentials`, 404 (and TMDB's HTTP-200 not-found codes) → `not_found`, 429 → `rate_limited` (with `retry_after_seconds` when TMDB sends `Retry-After`), 5xx → `unavailable`, timeouts → `timeout`, unreadable bodies → `malformed_response`. Retryable failures get at most one inline retry after a short jittered wait, or after `Retry-After` if it is 2 seconds or less. Credential and validation failures are never retried.
+- **Caching.** Successful responses are cached briefly in the Django cache (search 15 minutes, details 1 hour), scoped to a hash of the credential so different connections never share results. TMDB's terms forbid caching for longer than 6 months.
+- **Terms and attribution.** TMDB's API terms apply to each installation's use, including their non-commercial license. LibraryForge shows TMDB's required notice in the provider description and on **System → Credits**: "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."
+
 ## Secrets
 
 User-supplied provider secrets are submitted to the Django backend and encrypted before storage. They are never returned to the browser after saving. Encryption is derived from the LibraryForge Django secret key, so `DJANGO_SECRET_KEY` must remain stable for the life of the installation.
@@ -100,7 +119,7 @@ Application/project credentials used by future `application` or `hybrid` provide
 
 The provider registry is intentionally extensible. Planned later milestones can register adapters without redesigning the settings model:
 
-- alpha.5: TMDb, TheTVDB, OMDb, Fanart.tv and other metadata/artwork providers.
+- alpha.5 and later: TheTVDB, OMDb, Fanart.tv and other metadata/artwork providers (TMDB is implemented).
 - alpha.6: Jellyfin, Emby, Kodi and other output/server integrations.
 
 Only implemented providers should appear in the UI.

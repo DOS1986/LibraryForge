@@ -7,6 +7,7 @@ from integrations.providers.base import (
     IntegrationProvider,
     provider_supports_metadata_target,
 )
+from integrations.providers.tmdb import TMDbProvider
 from integrations.providers.tubearchivist import TubeArchivistProvider
 from integrations.providers.youtube import YouTubeProvider
 from metadata.providers.types import METADATA_TARGET_TYPES, MetadataTargetType
@@ -14,6 +15,7 @@ from metadata.providers.types import METADATA_TARGET_TYPES, MetadataTargetType
 PROVIDERS: dict[str, type[IntegrationProvider]] = {
     YouTubeProvider.definition.key: YouTubeProvider,
     TubeArchivistProvider.definition.key: TubeArchivistProvider,
+    TMDbProvider.definition.key: TMDbProvider,
 }
 
 

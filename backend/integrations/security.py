@@ -19,6 +19,9 @@ from urllib.request import (
 from integrations.providers.http import (
     ProviderHttpError,
 )
+from metadata.providers.types import (
+    MetadataProviderError,
+)
 
 
 PUBLIC_IMAGE_HOST_SUFFIXES = (
@@ -353,6 +356,14 @@ def fetch_remote_artwork(
 def public_provider_error(
     exc: Exception,
 ) -> str:
+    if isinstance(
+        exc,
+        MetadataProviderError,
+    ):
+        # Metadata adapters author these messages from a fixed vocabulary;
+        # they never contain credentials or upstream response bodies.
+        return exc.message
+
     if isinstance(
         exc,
         ProviderHttpError,

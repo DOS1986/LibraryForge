@@ -15,6 +15,15 @@ pre-1.0 development.
 * Added stable metadata-provider error categories with explicit retryability.
 * Added registry discovery of providers that support a metadata target type.
 * Added contract and compatibility tests confirming YouTube and TubeArchivist keep their known-ID lookups and do not claim movie or series search.
+* Added a TMDB integration for movie and TV series metadata retrieval: encrypted API Read Access Token, connection testing, movie and series search, normalized details, certifications and content ratings, IMDb/TVDB/Wikidata IDs, and poster/backdrop/logo references. Retrieval never changes catalog metadata.
+* Added TMDB error mapping to stable metadata error categories, one bounded inline retry for transient failures, `Retry-After` handling, and short-lived credential-scoped caching.
+* Added TMDB attribution to the provider description and a Credits section on the System page.
+* Added mocked TMDB adapter tests covering normalization, malformed and partial responses, error mapping, retries, caching, and credential handling.
+
+### Changed
+
+* Provider HTTP errors now record a failure reason (timeout, unreachable, invalid JSON, oversized response) and any `Retry-After` delay so adapters can classify failures without parsing messages.
+* Integration connection errors from metadata providers now show the provider's sanitized message.
 
 ## [0.1.0-alpha.4] - 2026-08-11
 

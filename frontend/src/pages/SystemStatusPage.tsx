@@ -221,6 +221,31 @@ export function SystemStatusPage() {
           </Card>
         </>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Credits</CardTitle>
+          <CardDescription>
+            Third-party services LibraryForge can use when you connect them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://www.themoviedb.org/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              TMDB (The Movie Database)
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            This product uses TMDB and the TMDB APIs but is not endorsed,
+            certified, or otherwise approved by TMDB.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }
