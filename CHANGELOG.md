@@ -5,6 +5,17 @@ All notable changes to LibraryForge will be documented in this file.
 LibraryForge uses Semantic Versioning while the application is under active
 pre-1.0 development.
 
+## [0.1.0-alpha.5] - Unreleased
+
+### Added
+
+* Added normalized metadata-provider types for movie and series targets: candidates, provider metadata, artwork references, namespaced external IDs, territory-scoped content ratings, and precision-preserving partial dates.
+* Added `metadata_target_types` to integration provider definitions and exposed it in the provider catalog API.
+* Added `search_metadata`, `get_metadata`, and `supports_metadata_target` to the integration provider contract, with request validation before any network call and validation of adapter output.
+* Added stable metadata-provider error categories with explicit retryability.
+* Added registry discovery of providers that support a metadata target type.
+* Added contract and compatibility tests confirming YouTube and TubeArchivist keep their known-ID lookups and do not claim movie or series search.
+
 ## [0.1.0-alpha.4] - 2026-08-11
 
 ### Added

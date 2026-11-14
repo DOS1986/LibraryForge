@@ -34,6 +34,20 @@ This distinction is intentionally part of the provider registry rather than the 
 
 The base provider implementation can read application-managed credentials from the Django setting `LIBRARYFORGE_INTEGRATION_APPLICATION_CREDENTIALS`. Future application/hybrid adapters can also override that behavior if a provider explicitly permits a bundled project credential. This setting is server-side only and is never serialized to the frontend.
 
+## Metadata provider contract (alpha.5)
+
+Movie and series metadata providers extend the same integration system; there is no separate metadata registry or credential store.
+
+- `ProviderDefinition.metadata_target_types` declares which normalized targets a provider can search and describe: `movie` and/or `series` (a whole television series, never an episode or season). It defaults to `()`, so existing providers are unaffected. Declaring a target requires the `metadata` capability.
+- `IntegrationProvider.supports_metadata_target(target_type)` answers whether the provider's definition supports a target. It says what a provider *can* do; it does not grant access to a connection, library assignment, or user.
+- `IntegrationProvider.search_metadata(target_type=, query=, year=, language=, page=, limit=)` returns a list of `MetadataCandidate` values. An empty list is a successful "no results" answer.
+- `IntegrationProvider.get_metadata(target_type=, source_id=, language=)` returns one `ProviderMetadata` value.
+
+The public methods validate the request before any network call (unsupported targets, empty or oversized queries, invalid years, pages, limits, languages, and source IDs fail without contacting the provider) and validate the adapter's output afterwards (results must be normalized types for the same provider and target). Adapters implement only `_search_metadata` and `_get_metadata`.
+
+The normalized types live in `backend/metadata/providers/types.py`: `MetadataCandidate`, `ProviderMetadata`, `ProviderArtwork`, `ExternalId`, `ContentRating`, and `PartialDate`. Identities are scoped by provider, target type, and source ID. Dates keep their known precision (a year is not January 1). Missing provider values stay empty and never imply clearing catalog data. `ProviderMetadata.raw` is optional, bounded, internal diagnostic data that is excluded from `to_dict()` and must never be a merge source. Failures raise `MetadataProviderError` with a stable `category` (`unsupported_target`, `invalid_request`, `invalid_configuration`, `invalid_credentials`, `permission_denied`, `not_found`, `rate_limited`, `unavailable`, `timeout`, `malformed_response`) and an explicit `retryable` flag.
+
+Search and detail retrieval never write catalog data. Applying provider metadata is a separate, reviewed step owned by the metadata services. `integrations.registry.metadata_provider_classes(target_type)` lists registered providers that declare a target; YouTube and TubeArchivist declare none and keep their existing known-ID lookups.
 
 ## Failure behavior
 

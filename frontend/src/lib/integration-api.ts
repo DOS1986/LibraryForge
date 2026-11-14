@@ -28,8 +28,11 @@ export interface IntegrationProviderDefinition {
   storage_policy: "none" | "transient"
   credential_mode: IntegrationCredentialMode
   credential_summary: string
+  metadata_target_types: MetadataTargetType[]
   fields: IntegrationFieldDefinition[]
 }
+
+export type MetadataTargetType = "movie" | "series"
 
 export interface IntegrationConnection {
   id: string
