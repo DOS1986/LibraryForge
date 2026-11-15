@@ -42,6 +42,7 @@ pre-1.0 development.
 * Added `metadata_id_namespace` to provider definitions so items with a known provider ID are looked up directly.
 * Added a TheTVDB v4 integration for TV series and movies: API key plus optional subscriber PIN, month-long login tokens with automatic renewal, search, English translations, country content ratings (two- or three-letter country codes), remote IMDb/TMDB IDs, and direct lookups by the TVDB ID TMDB provides.
 * Provider HTTP requests can now send a JSON body (used for TheTVDB login).
+* Added YouTube rating hints for online video channels: the library's YouTube connection reads YouTube's made-for-kids and age-restriction flags for each channel and its most recent videos (up to 250, batched 50 per quota unit), suggests TV-MA for age-restricted content or TV-Y for made-for-kids channels, and applies reviewed hints, recomputed on the server, with provider provenance that never replaces manual ratings.
 * Added a Jellyfin server integration: connection test, linking each library to its Jellyfin library (suggested by folder name), a Refresh in Jellyfin rescan after NFO changes that never replaces existing metadata, and a parental-control check showing each user's maximum rating, unrated blocking, and how many movies, series, and unrated items they can see.
 * Provider HTTP requests can now use bodiless methods such as POST, and empty responses (HTTP 204) return no data.
 * Added a type-or-pick content rating field to the metadata editor, with standard ratings and their meanings narrowing as you type.

@@ -64,6 +64,7 @@ from metadata.rating_views import (
     library_rating_suggestions_view,
     library_ratings_view,
     library_set_ratings_view,
+    library_youtube_rating_hints_view,
 )
 from metadata.match_views import (
     match_apply_view,
@@ -323,6 +324,11 @@ urlpatterns = [
         name="library-rating-nfo-import",
     ),
 
+    path(
+        "api/libraries/<uuid:library_id>/ratings/youtube-hints/",
+        library_youtube_rating_hints_view,
+        name="library-rating-youtube-hints",
+    ),
     path(
         "api/libraries/<uuid:library_id>/ratings/nfo-export/",
         library_nfo_rating_export_view,

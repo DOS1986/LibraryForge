@@ -1136,6 +1136,44 @@ export interface RatingKindInfo {
   total: number
   provider_suggestions: boolean
   nfo: boolean
+  youtube_hints: boolean
+}
+
+export type YouTubeHintStatus = "hint" | "no_signal" | "not_found" | "not_youtube"
+export type YouTubeHintAction = "set" | "change" | "unchanged" | "locked"
+
+export interface YouTubeRatingHint {
+  id: string
+  title: string
+  source_id: string
+  current: string
+  current_source: string | null
+  action: YouTubeHintAction | null
+  status: YouTubeHintStatus
+  rating: string
+  reason: string
+  note: string
+  stats: {
+    channel_found?: boolean
+    channel_made_for_kids?: boolean | null
+    videos_checked?: number
+    videos_made_for_kids?: number
+    videos_age_restricted?: number
+  }
+}
+
+export interface YouTubeRatingHints {
+  library_id: string
+  connection: { connection_id: string; connection_name: string; provider: string; provider_label: string }
+  results: YouTubeRatingHint[]
+}
+
+export type YouTubeHintApplyOutcome = "applied" | "unchanged" | "locked" | "changed"
+
+export interface YouTubeHintApplyResult {
+  library_id: string
+  counts: Record<YouTubeHintApplyOutcome, number>
+  results: { id: string; title: string; rating: string; result: YouTubeHintApplyOutcome }[]
 }
 
 export interface RatingCounts {

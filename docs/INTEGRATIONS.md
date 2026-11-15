@@ -136,7 +136,24 @@ Estimated rows are marked `estimated` with the `estimate` basis, are never pre-s
 
 ### Setting ratings by hand
 
-`POST /api/libraries/<id>/ratings/set/` with `{"kind": "movie|series|channel", "ids": [...], "rating": "TV-Y"}` sets the rating on up to 500 items from that library, or clears it with `""`. Recognized US ratings are upper-cased. Each change is recorded like a manual edit: the field gets a manual, locked provenance record and a history entry, so NFO imports and provider suggestions won't replace it. Unchanged items are counted but not rewritten. On the Ratings tab, select rows (or all on the page), choose a rating, and confirm. This is the only way to rate online video channels, since metadata providers don't rate them.
+`POST /api/libraries/<id>/ratings/set/` with `{"kind": "movie|series|channel", "ids": [...], "rating": "TV-Y"}` sets the rating on up to 500 items from that library, or clears it with `""`. Recognized US ratings are upper-cased. Each change is recorded like a manual edit: the field gets a manual, locked provenance record and a history entry, so NFO imports and provider suggestions won't replace it. Unchanged items are counted but not rewritten. On the Ratings tab, select rows (or all on the page), choose a rating, and confirm. Metadata providers don't rate online video channels, so channels are rated here, optionally starting from YouTube hints (below).
+
+### YouTube rating hints for channels
+
+YouTube doesn't rate videos, but the YouTube Data API returns two audience flags: `status.madeForKids` on channels and videos, and `contentDetails.contentRating.ytRating = "ytAgeRestricted"` on videos YouTube has age-restricted. For channel rows, **Check YouTube** turns them into a suggested US TV rating, strongest signal first:
+
+1. Any checked video is age-restricted: **TV-MA**.
+2. The channel is marked made for kids: **TV-Y**.
+3. At least 90% of the checked videos are made for kids: **TV-Y**.
+4. Otherwise no hint. Most general-audience content has no flag, so you rate it yourself.
+
+TV-Y is a starting point: for a made-for-kids channel aimed at older children, TV-Y7 may fit better, and the hint says so.
+
+- **Endpoints.** `GET /api/libraries/<id>/ratings/youtube-hints/?ids=…` returns a hint, reason, flag counts, and what applying would do (`set`, `change`, `unchanged`, or `locked`) for up to 25 channels. It never writes. `POST` with `{"hints": {"<channel id>": "TV-Y"}}` recomputes each hint and writes only those that still equal the reviewed rating. Both use the metadata provider rate limit.
+- **Connection.** Uses the YouTube connection assigned to the library for metadata (library **Settings**). Without one the endpoint answers 409 with that explanation.
+- **Quota.** Channel IDs come from the catalog, and up to the 250 most recent videos LibraryForge has for each channel are checked. Requests are batched 50 IDs at a time (`channels.list part=status`, `videos.list part=status,contentDetails`), one quota unit per call. Flags are cached for an hour and never stored.
+- **Provenance.** Applied hints are saved with provider provenance (`youtube:channel:<channel ID>`), locked against scans, with a history entry recording the flag counts. A later hint can update a hinted rating, but ratings set by hand are never replaced; one click applies hints only to channels with no rating, and replacing an existing rating is a per-row choice.
+- **Limits.** Google documents `selfDeclaredMadeForKids` as owner-only, so only the effective `madeForKids` value is read. A channel's flag reflects its videos' default audience, not each video's content.
 
 ### Importing ratings from NFO files
 
@@ -193,6 +210,8 @@ Credential mode: `user`.
 The YouTube adapter uses the official YouTube Data API only for existing stable IDs already known to LibraryForge. It does not search for content to acquire and cannot download media.
 
 Each LibraryForge installation supplies its own YouTube Data API v3 key. LibraryForge does not ship a shared/global YouTube API key.
+
+In alpha.5 the YouTube connection also supplies channel rating hints from YouTube's made-for-kids and age-restriction flags (see **YouTube rating hints for channels**).
 
 YouTube API responses are treated as live/transient provider data. LibraryForge does not persist provider response snapshots in alpha.4. This keeps archived/local metadata distinct from current provider state and avoids uncontrolled long-lived provider snapshots.
 

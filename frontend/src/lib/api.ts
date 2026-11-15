@@ -50,6 +50,8 @@ import type {
   User,
   UserSettings,
   UserSettingsUpdate,
+  YouTubeHintApplyResult,
+  YouTubeRatingHints,
 } from "@/types"
 
 
@@ -1484,6 +1486,28 @@ export async function writeNfoRatingBatch(
 
 // Set (or clear, with "") the rating on chosen items. Recorded as manual
 // edits, so imports and provider suggestions won't replace them.
+// Rating hints for channels from YouTube's made-for-kids and age-restriction flags.
+export async function getYouTubeRatingHints(libraryId: string, ids: string[]) {
+  return request<YouTubeRatingHints>(
+    `/api/libraries/${libraryId}/ratings/youtube-hints/` + queryString({ ids: ids.join(",") }),
+  )
+}
+
+
+// Applies reviewed hints; the server recomputes each and writes only those still matching.
+export async function applyYouTubeRatingHints(libraryId: string, hints: Record<string, string>) {
+  await ensureCsrf()
+
+  return request<YouTubeHintApplyResult>(
+    `/api/libraries/${libraryId}/ratings/youtube-hints/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ hints }),
+    },
+  )
+}
+
+
 export async function setLibraryRatings(
   libraryId: string,
   kind: RatingKind,

@@ -19,6 +19,10 @@ from metadata.services.ratings import (
     rating_suggestions,
     set_ratings,
 )
+from metadata.services.youtube_rating_hints import (
+    apply_youtube_rating_hints,
+    youtube_rating_hints,
+)
 
 
 @api_view(["GET"])
@@ -112,3 +116,19 @@ def library_set_ratings_view(request, library_id):
             rating=request.data.get("rating"),
         )
     )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([MetadataProviderThrottle])
+def library_youtube_rating_hints_view(request, library_id):
+    """GET suggests ratings for channels (``ids``) from YouTube's audience
+    flags; POST applies reviewed hints (body: ``hints``, channel ID to rating).
+
+    Applying recomputes each hint and writes only those that still match.
+    """
+
+    library = owned_library(user=request.user, library_id=library_id)
+    if request.method == "GET":
+        return _run(lambda: youtube_rating_hints(library, ids=(request.query_params.get("ids") or "").split(",")))
+    return _run(lambda: apply_youtube_rating_hints(library, user=request.user, hints=request.data.get("hints")))

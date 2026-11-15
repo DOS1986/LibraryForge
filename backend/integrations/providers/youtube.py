@@ -15,8 +15,8 @@ from integrations.providers.base import (
     IntegrationProvider,
     ProviderDefinition,
 )
-from integrations.providers.http import request_json
-
+from integrations.providers.http import ProviderHttpError, request_json
+from metadata.providers.types import MetadataErrorCategory, MetadataProviderError
 
 YOUTUBE_API_ROOT = "https://www.googleapis.com/youtube/v3"
 
@@ -147,4 +147,92 @@ class YouTubeProvider(IntegrationProvider):
                 if source_id not in returned_ids:
                     cache.set(self._cache_key(target_type, source_id), {}, timeout=300)
 
+        return output
+
+    # ------------------------------------------------------------------
+    # Audience signals for rating hints
+    # ------------------------------------------------------------------
+
+    def _signals_request(self, resource: str, params: dict[str, str]) -> Any:
+        try:
+            return self._get(resource, params)
+        except ProviderHttpError as exc:
+            raise self._map_http_error(exc) from exc
+
+    @staticmethod
+    def _map_http_error(exc: ProviderHttpError) -> MetadataProviderError:
+        if exc.status == 400:
+            return MetadataProviderError(
+                MetadataErrorCategory.INVALID_CREDENTIALS,
+                "YouTube rejected the request. Check the connection's API key.",
+            )
+        if exc.status == 403:
+            # 403 covers both a restricted key and a used-up daily quota.
+            return MetadataProviderError(
+                MetadataErrorCategory.PERMISSION_DENIED,
+                "YouTube refused the request. The API key may be restricted, or its daily quota may be used up.",
+            )
+        if exc.status == 429:
+            return MetadataProviderError(
+                MetadataErrorCategory.RATE_LIMITED,
+                "YouTube is rate limiting requests. Try again shortly.",
+                retry_after_seconds=exc.retry_after,
+            )
+        if exc.reason == "timeout":
+            return MetadataProviderError(MetadataErrorCategory.TIMEOUT, "YouTube didn't respond in time.")
+        return MetadataProviderError(MetadataErrorCategory.UNAVAILABLE, "YouTube is unavailable right now.")
+
+    @staticmethod
+    def _made_for_kids(item: dict[str, Any]) -> bool | None:
+        value = (item.get("status") or {}).get("madeForKids")
+        return value if isinstance(value, bool) else None
+
+    def content_signals(self, *, target_type: str, source_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """YouTube's audience flags for channels or videos, by ID.
+
+        Each found ID maps to ``made_for_kids`` (True, False, or None when
+        YouTube doesn't say) and, for videos, ``age_restricted`` (YouTube's
+        ``ytAgeRestricted`` rating). IDs YouTube doesn't return (deleted or
+        private) are left out. Costs one quota unit per 50 IDs; results are
+        cached briefly and never stored.
+        """
+
+        if target_type == "channel":
+            resource, parts = "channels", "status"
+        elif target_type == "online_video":
+            resource, parts = "videos", "status,contentDetails"
+        else:
+            return {}
+
+        ids = [value for value in dict.fromkeys(source_ids) if value]
+        output: dict[str, dict[str, Any]] = {}
+        missing: list[str] = []
+        for source_id in ids:
+            cached = cache.get(self._cache_key(f"signals:{target_type}", source_id))
+            if isinstance(cached, dict):
+                if cached:
+                    output[source_id] = cached
+            else:
+                missing.append(source_id)
+
+        for offset in range(0, len(missing), 50):
+            batch = missing[offset : offset + 50]
+            payload = self._signals_request(resource, {"part": parts, "id": ",".join(batch), "maxResults": "50"})
+            returned: set[str] = set()
+            for item in (payload or {}).get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                source_id = str(item.get("id") or "")
+                if source_id not in batch:
+                    continue
+                returned.add(source_id)
+                signals: dict[str, Any] = {"made_for_kids": self._made_for_kids(item)}
+                if target_type == "online_video":
+                    rating = ((item.get("contentDetails") or {}).get("contentRating") or {}).get("ytRating")
+                    signals["age_restricted"] = rating == "ytAgeRestricted"
+                output[source_id] = signals
+                cache.set(self._cache_key(f"signals:{target_type}", source_id), signals, timeout=3600)
+            for source_id in batch:
+                if source_id not in returned:
+                    cache.set(self._cache_key(f"signals:{target_type}", source_id), {}, timeout=300)
         return output

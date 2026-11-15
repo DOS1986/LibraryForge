@@ -64,9 +64,10 @@ _KIND_TARGETS = {
 }
 
 KIND_INFO = {
-    KIND_MOVIE: {"label": "Movies", "provider_suggestions": True, "nfo": True},
-    KIND_SERIES: {"label": "TV series", "provider_suggestions": True, "nfo": True},
-    KIND_CHANNEL: {"label": "Online video channels", "provider_suggestions": False, "nfo": False},
+    KIND_MOVIE: {"label": "Movies", "provider_suggestions": True, "nfo": True, "youtube_hints": False},
+    KIND_SERIES: {"label": "TV series", "provider_suggestions": True, "nfo": True, "youtube_hints": False},
+    # Channels get hints from YouTube's audience flags instead of provider matches.
+    KIND_CHANNEL: {"label": "Online video channels", "provider_suggestions": False, "nfo": False, "youtube_hints": True},
 }
 
 # The kind a library shows first, by its content type.

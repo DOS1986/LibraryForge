@@ -25,8 +25,10 @@ import { JellyfinRefreshCard } from "@/components/jellyfin/JellyfinPanels"
 import {
   ApiError,
   applyMetadataMatch,
+  applyYouTubeRatingHints,
   getLibraryRatings,
   getRatingSuggestions,
+  getYouTubeRatingHints,
   setLibraryRatings,
 } from "@/lib/api"
 import { newOperationId } from "@/lib/ids"
@@ -39,6 +41,8 @@ import type {
   RatingCoverageRow,
   RatingStatus,
   RatingSuggestion,
+  YouTubeHintApplyOutcome,
+  YouTubeRatingHint,
 } from "@/types"
 
 
@@ -67,6 +71,21 @@ const STATUS_LABELS: Record<RatingStatus, string> = {
 // The server answers at most 10 items per request. A whole page is worked
 // through in sequential batches so the metadata provider isn't flooded.
 const SUGGESTIONS_PER_REQUEST = 10
+// YouTube hints check up to 25 channels per request.
+const HINTS_PER_REQUEST = 25
+
+interface HintState extends YouTubeRatingHint {
+  applying?: boolean
+  outcome?: YouTubeHintApplyOutcome
+  error?: string
+}
+
+const HINT_OUTCOMES: Record<YouTubeHintApplyOutcome, string> = {
+  applied: "Applied",
+  unchanged: "Already set",
+  locked: "Kept your manual rating",
+  changed: "YouTube's flags changed; check again",
+}
 
 const DEFAULT_KIND: Record<string, RatingKind> = {
   movies: "movie",
@@ -123,6 +142,10 @@ export function LibraryRatingsPage() {
   const [findError, setFindError] = useState<string | null>(null)
   const [attribution, setAttribution] = useState("")
 
+  const [hints, setHints] = useState<Record<string, HintState>>({})
+  const [applyingAllHints, setApplyingAllHints] = useState(false)
+  const [hintMessage, setHintMessage] = useState<string | null>(null)
+
   const [editing, setEditing] = useState<{ kind: MetadataMatchKind; id: string; title: string } | null>(null)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -167,6 +190,8 @@ export function LibraryRatingsPage() {
 
   useEffect(() => {
     setSuggestions({})
+    setHints({})
+    setHintMessage(null)
     setFindError(null)
   }, [library.id, kind])
 
@@ -265,6 +290,117 @@ export function LibraryRatingsPage() {
     }
   }
 
+  const unhinted = rows.filter(row => row.status !== "rated" && !hints[row.id])
+
+  async function findHints(ids: string[]) {
+    if (!ids.length) {
+      return
+    }
+
+    const run = ++runRef.current
+
+    setFinding(true)
+    setFindError(null)
+    setHintMessage(null)
+    setProgress({ done: 0, total: ids.length })
+
+    try {
+      for (let start = 0; start < ids.length; start += HINTS_PER_REQUEST) {
+        const batch = ids.slice(start, start + HINTS_PER_REQUEST)
+        const data = await getYouTubeRatingHints(library.id, batch)
+
+        if (runRef.current !== run) {
+          return
+        }
+
+        setHints(current => {
+          const next = { ...current }
+          for (const item of data.results) {
+            next[item.id] = item
+          }
+          return next
+        })
+        setProgress({ done: Math.min(start + batch.length, ids.length), total: ids.length })
+      }
+    } catch (error) {
+      if (runRef.current === run) {
+        setFindError(errorMessage(error, "Unable to check YouTube."))
+      }
+    } finally {
+      if (runRef.current === run) {
+        setFinding(false)
+        setProgress(null)
+      }
+    }
+  }
+
+  function markHints(ids: string[], patch: Partial<HintState>) {
+    setHints(current => {
+      const next = { ...current }
+      for (const id of ids) {
+        if (next[id]) {
+          next[id] = { ...next[id], ...patch }
+        }
+      }
+      return next
+    })
+  }
+
+  async function applyHints(items: HintState[]) {
+    if (!items.length) {
+      return
+    }
+
+    const ids = items.map(item => item.id)
+    markHints(ids, { applying: true, error: undefined })
+
+    try {
+      const result = await applyYouTubeRatingHints(
+        library.id,
+        Object.fromEntries(items.map(item => [item.id, item.rating])),
+      )
+      setHints(current => {
+        const next = { ...current }
+        for (const item of result.results) {
+          if (next[item.id]) {
+            next[item.id] = { ...next[item.id], applying: false, outcome: item.result }
+          }
+        }
+        return next
+      })
+      void load(true)
+      return result.counts
+    } catch (error) {
+      markHints(ids, { applying: false, error: errorMessage(error, "Unable to apply the YouTube hints.") })
+      return null
+    }
+  }
+
+  async function applyAllHints() {
+    const items = readyHints
+    const total = { applied: 0, changed: 0, locked: 0 }
+
+    setApplyingAllHints(true)
+    setHintMessage(null)
+    try {
+      for (let start = 0; start < items.length; start += HINTS_PER_REQUEST) {
+        const counts = await applyHints(items.slice(start, start + HINTS_PER_REQUEST))
+        if (counts) {
+          total.applied += counts.applied
+          total.changed += counts.changed
+          total.locked += counts.locked
+        }
+      }
+      setHintMessage(
+        `Applied ${total.applied} rating${total.applied === 1 ? "" : "s"} from YouTube hints.`
+        + (total.changed ? ` ${total.changed} changed on YouTube; check them again.` : "")
+        + (total.locked ? ` ${total.locked} kept their manual rating.` : ""),
+      )
+    } finally {
+      setApplyingAllHints(false)
+    }
+  }
+
   function stopFinding() {
     runRef.current += 1
     setFinding(false)
@@ -315,6 +451,11 @@ export function LibraryRatingsPage() {
 
   const counts = coverage?.summary[kind]
   const kindInfo = coverage?.kinds.find(item => item.kind === kind)
+  // One click applies hints only to channels with no rating yet; replacing
+  // an existing rating is done row by row.
+  const readyHints = Object.values(hints).filter(
+    hint => hint.status === "hint" && hint.action === "set" && !hint.outcome && !hint.applying,
+  )
   const editable = kind === "movie" || kind === "series"
   const ratingOptions = kind === "movie"
     ? [...MOVIE_RATINGS, ...TV_RATINGS]
@@ -463,6 +604,44 @@ export function LibraryRatingsPage() {
             </p>
           )}
 
+          {kindInfo?.youtube_hints && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                {finding ? (
+                  <>
+                    <Button disabled>
+                      Checking YouTube... {progress ? `${progress.done} of ${progress.total}` : ""}
+                    </Button>
+                    <Button variant="outline" onClick={stopFinding}>
+                      Stop
+                    </Button>
+                  </>
+                ) : (
+                  <Button disabled={!unhinted.length} onClick={() => void findHints(unhinted.map(row => row.id))}>
+                    {unhinted.length
+                      ? `Check YouTube for ${unhinted.length} unrated channel${unhinted.length === 1 ? "" : "s"} on this page`
+                      : "No unrated channels left to check on this page"}
+                  </Button>
+                )}
+                {readyHints.length > 0 && !finding && (
+                  <Button variant="outline" disabled={applyingAllHints} onClick={() => void applyAllHints()}>
+                    {applyingAllHints
+                      ? "Applying..."
+                      : `Apply ${readyHints.length} hint${readyHints.length === 1 ? "" : "s"}`}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Uses your YouTube connection to read YouTube&apos;s own audience flags. A channel marked &quot;made for
+                kids&quot;, or one whose videos nearly all are, suggests TV-Y; any age-restricted video suggests TV-MA.
+                YouTube doesn&apos;t rate other videos, so those channels get no hint. Up to 250 recent videos are checked
+                per channel (one quota unit per 50). Nothing is saved until you apply a hint.
+              </p>
+            </div>
+          )}
+
+          {hintMessage && <p className="text-sm" role="status">{hintMessage}</p>}
+
           {kindInfo?.provider_suggestions && (
           <div className="flex flex-wrap items-center gap-3">
             {finding ? (
@@ -566,6 +745,8 @@ export function LibraryRatingsPage() {
                       key={row.id}
                       row={row}
                       suggestion={suggestions[row.id]}
+                      hint={hints[row.id]}
+                      onApplyHint={hint => void applyHints([hint])}
                       busy={finding}
                       selected={selected.has(row.id)}
                       onToggle={() => toggleRow(row.id)}
@@ -672,6 +853,8 @@ export function LibraryRatingsPage() {
 function RatingRow({
   row,
   suggestion,
+  hint,
+  onApplyHint,
   busy,
   selected,
   onToggle,
@@ -681,6 +864,8 @@ function RatingRow({
 }: {
   row: RatingCoverageRow
   suggestion?: SuggestionState
+  hint?: HintState
+  onApplyHint: (hint: HintState) => void
   busy: boolean
   selected: boolean
   onToggle: () => void
@@ -726,7 +911,11 @@ function RatingRow({
         {row.locked ? " · locked" : ""}
       </td>
       <td className="py-2">
-        <SuggestionCell suggestion={suggestion} busy={busy} onApply={onApply} onRetry={onRetry} onOpen={onOpen ?? (() => undefined)} />
+        {hint ? (
+          <HintCell hint={hint} onApply={onApplyHint} />
+        ) : (
+          <SuggestionCell suggestion={suggestion} busy={busy} onApply={onApply} onRetry={onRetry} onOpen={onOpen ?? (() => undefined)} />
+        )}
       </td>
     </tr>
   )
@@ -802,6 +991,54 @@ function SuggestionCell({
           Find match
         </Button>
       )}
+    </div>
+  )
+}
+
+
+function HintCell({
+  hint,
+  onApply,
+}: {
+  hint: HintState
+  onApply: (hint: HintState) => void
+}) {
+  if (hint.outcome === "applied") {
+    return <span className="font-medium text-emerald-600 dark:text-emerald-400">Applied {hint.rating}</span>
+  }
+
+  const canApply = hint.status === "hint" && (hint.action === "set" || hint.action === "change") && !hint.outcome
+
+  return (
+    <div className="space-y-1">
+      {hint.status === "hint" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{hint.rating}</span>
+          <span className="text-xs text-muted-foreground">YouTube hint</span>
+          {canApply && (
+            <Button size="sm" disabled={hint.applying} onClick={() => onApply(hint)}>
+              {hint.applying
+                ? "Applying..."
+                : hint.action === "change"
+                  ? `Replace ${hint.current} with ${hint.rating}`
+                  : `Apply ${hint.rating}`}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className="text-xs text-muted-foreground">{hint.reason}</div>
+      {hint.note && <div className="text-xs text-muted-foreground">{hint.note}</div>}
+
+      {hint.action === "locked" && !hint.outcome && (
+        <div className="text-xs text-muted-foreground">
+          You set this rating by hand, so the hint won&apos;t replace it. Select the row to change it yourself.
+        </div>
+      )}
+      {hint.outcome && (
+        <div className="text-xs text-muted-foreground">{HINT_OUTCOMES[hint.outcome]}</div>
+      )}
+      {hint.error && <div className="text-xs text-destructive" role="alert">{hint.error}</div>}
     </div>
   )
 }
