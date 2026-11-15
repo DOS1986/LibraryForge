@@ -246,6 +246,44 @@ The OMDb adapter (`integrations/providers/omdb.py`) uses the Open Movie Database
 - **Errors.** OMDb error messages are classified by their wording: not found, invalid API key, request limit reached, and too many results. HTTP 401 is reported as a rejected key or an exhausted daily limit. Rate limits are not retried, because they reset daily; other transient errors get one retry.
 - **Terms.** OMDb content is CC BY-NC 4.0, and its Terms of Use allow personal, non-commercial use and restrict archiving. LibraryForge keeps only short-lived caches (search 15 minutes, details 1 hour, scoped to the key); ratings a person saves stay in their own catalog. The Poster API is patron-only, so posters are never downloaded. Attribution appears in the provider description, with its data, and on **System → Credits**.
 
+### TheTVDB
+
+Capabilities: `metadata`.
+Metadata targets: `movie`, `series`.
+ID namespace: `tvdb`.
+Credential mode: `user`.
+
+The TheTVDB adapter (`integrations/providers/tvdb.py`) uses TheTVDB's v4 API. It is strongest for TV series, including older and regional shows, and their country content ratings.
+
+- **Credential.** A TheTVDB v4 API key, plus a subscriber PIN for user-supported keys (optional field). `POST /login` exchanges them for a token that is valid for a month. The token is cached (renewed after 25 days, scoped to the key and PIN), sent as `Authorization: Bearer`, and renewed once automatically if TheTVDB refuses it. The connection test performs a fresh login.
+- **Search and details.**
+  - Search is `/search` with `type` (`series` or `movie`) and `year`, 20 per page; TheTVDB caps search at 5,000 results.
+  - Details are `/series/{id}/extended` or `/movies/{id}/extended` with `meta=translations&short=true`.
+  - English names and overviews are preferred when TheTVDB has them (three-letter `eng` translations), keeping the original title as the original title.
+- **Field mapping.**
+  - Series: first and last aired dates (the end date only once the status is Ended or Canceled), average runtime as the typical episode runtime, and the original/latest network.
+  - Movies: first release date, runtime, and studio and production companies.
+  - Genres, and remote IDs for IMDb and TMDB.
+  - Content ratings per country. TheTVDB's country codes are read as two- or three-letter codes (`usa` becomes `US`), so the US rating is used directly and other countries feed the US estimate. Popularity `score` is never treated as a rating.
+- **Provider chain.** TMDB's series details include the TVDB ID, so in multi-provider rating suggestions TheTVDB looks those series up directly instead of searching.
+- **Errors.** 401 means a rejected key or PIN (after one token renewal); 400 and 404 mean not found (an empty search); 429 means rate limited; 5xx and timeouts get one retry.
+- **Terms.** TheTVDB requires attribution with a direct link to TheTVDB.com, shown in the provider description, with its data, and on **System → Credits**. Personal and small projects are free; user-supported keys need TheTVDB's subscription PIN. No caching limits are stated; LibraryForge keeps short-lived caches (search 15 minutes, details 1 hour).
+
+### Jellyfin
+
+Capabilities: `output`.
+Credential mode: `user`.
+
+The Jellyfin adapter (`integrations/providers/jellyfin.py`) connects to your own Jellyfin server. It doesn't provide metadata. It asks Jellyfin to rescan a library after LibraryForge changes NFO files, and it reports each user's parental controls.
+
+- **Connection.** Server URL plus an API key (Jellyfin Dashboard → API Keys), sent as `Authorization: MediaBrowser Token="..."`. The URL must be http(s) without credentials, a query, or a fragment. The connection test reads `/System/Info` and shows the server name and version.
+- **Library link.** Each library's Jellyfin assignment (Library Settings → Integrations) has a **Jellyfin library** choice, stored in the link's `options.jellyfin_library_id`. LibraryForge suggests one by matching the last folder name of the library's path against each Jellyfin library's folders (so `\\nas\media-library\TVShows` matches `/media/TVShows`), then by library name. The suggestion is only saved when confirmed.
+  - `GET /api/integrations/library-links/<id>/jellyfin/` lists Jellyfin's libraries with the selected and suggested link.
+  - `POST` with `{"jellyfin_library_id": ...}` saves it; `""` clears it.
+- **Rescan.** `POST /api/integrations/library-links/<id>/jellyfin/refresh/` (the **Refresh in Jellyfin** button on the Ratings tab) runs Jellyfin's equivalent of *Scan library* on the linked library: `POST /Items/{id}/Refresh` with `Recursive=true`, `MetadataRefreshMode=Default`, and `ReplaceAllMetadata=false`, so new and changed files (including NFOs) are read and existing metadata isn't replaced. It requires the link to be enabled with the `output` capability.
+- **Parental check.** `GET /api/integrations/connections/<id>/jellyfin/parental/` (**Check parental controls** on Settings → Integrations) lists each user's maximum parental rating (named via `/Localization/ParentalRatings` when available), which item types have unrated items blocked, and how many movies and series they can see in total and without a rating. Counts are asked per user, so they reflect that user's own restrictions. A restricted user who can see unrated items of a type that isn't blocked gets a warning. Restricted accounts are listed first.
+- **Verification.** The header, library list, scan, and user policy fields are confirmed in Jellyfin's OpenAPI spec. Per-library refresh, per-user counts, and rating names follow long-standing Jellyfin API behaviour that the published spec excerpt didn't confirm, so their responses are parsed defensively. A count Jellyfin doesn't return shows as unknown rather than zero.
+
 ## Secrets
 
 User-supplied provider secrets are submitted to the Django backend and encrypted before storage. They are never returned to the browser after saving. Encryption is derived from the LibraryForge Django secret key, so `DJANGO_SECRET_KEY` must remain stable for the life of the installation.
@@ -256,7 +294,7 @@ Application/project credentials used by future `application` or `hybrid` provide
 
 The provider registry is intentionally extensible. Planned later milestones can register adapters without redesigning the settings model:
 
-- alpha.5 and later: TheTVDB, OMDb, Fanart.tv and other metadata/artwork providers (TMDB is implemented).
-- alpha.6: Jellyfin, Emby, Kodi and other output/server integrations.
+- alpha.5 and later: Fanart.tv and other metadata/artwork providers (TMDB, OMDb, and TheTVDB are implemented).
+- alpha.6: Emby, Kodi and other output/server integrations (Jellyfin rescans and parental checks are implemented).
 
 Only implemented providers should appear in the UI.

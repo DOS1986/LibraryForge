@@ -13,7 +13,6 @@ from urllib.request import (
     build_opener,
 )
 
-
 MAX_PROVIDER_JSON_BYTES = (
     10 * 1024 * 1024
 )
@@ -83,7 +82,13 @@ def request_json(
     *,
     headers: dict[str, str] | None = None,
     timeout: float = 8.0,
+    method: str = "GET",
+    json_body: Any = None,
 ) -> Any:
+    """Call a JSON API with GET or POST, optionally sending a JSON body.
+
+    An empty response body, as from HTTP 204, returns None.
+    """
     try:
         parsed = urlparse(
             url
@@ -108,14 +113,21 @@ def request_json(
             reason="invalid_url",
         )
 
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "LibraryForge/0.1",
+        **(headers or {}),
+    }
+    data = None
+    if json_body is not None:
+        data = json.dumps(json_body).encode("utf-8")
+        request_headers["Content-Type"] = "application/json"
+
     request = Request(
         url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "LibraryForge/0.1",
-            **(headers or {}),
-        },
-        method="GET",
+        data=data,
+        headers=request_headers,
+        method=method.upper(),
     )
 
     opener = build_opener(
@@ -180,6 +192,9 @@ def request_json(
             "the 10 MB limit.",
             reason="too_large",
         )
+
+    if not body.strip():
+        return None
 
     try:
         return json.loads(

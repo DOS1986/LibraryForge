@@ -357,8 +357,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(rows["tubearchivist"]["metadata_target_types"], [])
 
     def test_movie_and_series_providers(self):
-        self.assertEqual([item.definition.key for item in metadata_provider_classes("movie")], ["tmdb", "omdb"])
-        self.assertEqual([item.definition.key for item in metadata_provider_classes("series")], ["tmdb", "omdb"])
+        self.assertEqual([item.definition.key for item in metadata_provider_classes("movie")], ["tmdb", "omdb", "tvdb"])
+        self.assertEqual([item.definition.key for item in metadata_provider_classes("series")], ["tmdb", "omdb", "tvdb"])
         self.assertEqual(metadata_provider_classes("episode"), [])
 
     def test_definition_validation(self):

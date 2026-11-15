@@ -258,6 +258,19 @@ export function SystemStatusPage() {
             Data from the OMDb API (omdbapi.com), licensed CC BY-NC 4.0. OMDb is not
             endorsed by or affiliated with IMDb.com.
           </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://thetvdb.com/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              TheTVDB
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Metadata provided by TheTVDB. Please consider adding missing information or subscribing.
+          </p>
         </CardContent>
       </Card>
     </div>

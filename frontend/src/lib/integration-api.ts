@@ -64,6 +64,7 @@ export interface LibraryIntegration {
   enabled: boolean
   priority: number
   capabilities: IntegrationCapability[]
+  options: Record<string, string>
   credential_mode: IntegrationCredentialMode
   credential_summary: string
   created_at: string
@@ -171,4 +172,56 @@ export function createLibraryIntegration(input: {
 
 export function deleteLibraryIntegration(id: string) {
   return api<void>(`/api/integrations/library-links/${id}/`, { method: "DELETE" })
+}
+
+
+// Jellyfin server
+
+export interface JellyfinLibrary {
+  id: string
+  name: string
+  collection_type: string
+  locations: string[]
+}
+
+export interface JellyfinLink {
+  link_id: string
+  libraries: JellyfinLibrary[]
+  selected_id: string | null
+  suggested_id: string | null
+}
+
+export interface JellyfinUserReport {
+  id: string
+  name: string
+  is_administrator: boolean
+  is_disabled: boolean
+  max_parental_rating: number | null
+  max_parental_rating_names: string[]
+  blocks_unrated: string[]
+  counts: Record<"movies" | "series", { visible: number | null; visible_unrated: number | null }>
+  warnings: string[]
+}
+
+export function getJellyfinLink(linkId: string) {
+  return api<JellyfinLink>(`/api/integrations/library-links/${linkId}/jellyfin/`)
+}
+
+export function saveJellyfinLink(linkId: string, jellyfinLibraryId: string) {
+  return api<JellyfinLink>(`/api/integrations/library-links/${linkId}/jellyfin/`, {
+    method: "POST",
+    body: JSON.stringify({ jellyfin_library_id: jellyfinLibraryId }),
+  })
+}
+
+export function refreshJellyfinLibrary(linkId: string) {
+  return api<{ ok: boolean; detail: string }>(`/api/integrations/library-links/${linkId}/jellyfin/refresh/`, {
+    method: "POST",
+  })
+}
+
+export function getJellyfinParentalReport(connectionId: string) {
+  return api<{ connection_id: string; users: JellyfinUserReport[] }>(
+    `/api/integrations/connections/${connectionId}/jellyfin/parental/`,
+  )
 }

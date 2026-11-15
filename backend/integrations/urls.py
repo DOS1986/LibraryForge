@@ -1,6 +1,11 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from integrations.jellyfin_views import (
+    jellyfin_link_view,
+    jellyfin_parental_view,
+    jellyfin_refresh_view,
+)
 from integrations.views import (
     IntegrationConnectionViewSet,
     LibraryIntegrationViewSet,
@@ -26,5 +31,8 @@ urlpatterns = [
         library_artwork,
         name="integration-library-artwork",
     ),
+    path("library-links/<uuid:link_id>/jellyfin/", jellyfin_link_view, name="jellyfin-link"),
+    path("library-links/<uuid:link_id>/jellyfin/refresh/", jellyfin_refresh_view, name="jellyfin-refresh"),
+    path("connections/<uuid:connection_id>/jellyfin/parental/", jellyfin_parental_view, name="jellyfin-parental"),
     path("", include(router.urls)),
 ]

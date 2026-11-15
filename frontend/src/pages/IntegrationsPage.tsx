@@ -21,6 +21,7 @@ import {
   type IntegrationCredentialMode,
   type IntegrationProviderDefinition,
 } from "@/lib/integration-api"
+import { JellyfinParentalCheck } from "@/components/jellyfin/JellyfinPanels"
 
 interface FormState {
   id?: string
@@ -231,6 +232,7 @@ export function IntegrationsPage() {
                 <div className="font-medium">{connection.name}</div>
                 <div className="text-sm text-muted-foreground">{connection.provider_label} • {credentialModeLabel(connection.credential_mode)} • {connection.status}</div>
                 {connection.last_error && <div className="mt-1 text-xs text-destructive">{connection.last_error}</div>}
+                {connection.provider === "jellyfin" && <JellyfinParentalCheck connectionId={connection.id} />}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => startEdit(connection)}>Edit</Button>

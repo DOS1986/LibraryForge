@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { CatalogItemEditorDialog } from "@/components/catalog/CatalogItemEditorDialog"
 import { NfoRatingImportCard } from "@/components/ratings/NfoRatingImportCard"
 import { NfoRatingExportCard } from "@/components/ratings/NfoRatingExportCard"
+import { JellyfinRefreshCard } from "@/components/jellyfin/JellyfinPanels"
 
 import {
   ApiError,
@@ -422,6 +423,8 @@ export function LibraryRatingsPage() {
             libraryId={library.id}
             kind={kind as MetadataMatchKind}
           />
+
+          <JellyfinRefreshCard libraryId={library.id} />
         </>
       )}
 

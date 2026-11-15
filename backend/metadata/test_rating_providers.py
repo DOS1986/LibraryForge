@@ -112,3 +112,42 @@ class ProviderChainTests(_MatchApiTestCase):
         ]
         result = self.suggest()["results"][0]
         self.assertEqual((result["status"], result["provider"]), ("suggested", "omdb"))
+
+
+class TvdbChainTests(ProviderChainTests):
+    """TMDB's series details include the TVDB ID, so TheTVDB is asked directly."""
+
+    def setUp(self):
+        super().setUp()
+        from catalog.models import Series
+
+        self.tvdb = IntegrationConnection.objects.create(
+            owner=self.user, name="My TVDB", provider="tvdb", configuration={},
+            encrypted_secrets=encrypt_secrets({"api_key": "a1b2c3d4-e5f6"}),
+        )
+        LibraryIntegration.objects.filter(library=self.tv).update(priority=10)
+        LibraryIntegration.objects.create(library=self.tv, connection=self.tvdb, capabilities=["metadata"], priority=20)
+        self.series = Series.objects.get(pk=self.series.pk)
+
+    def test_tvdb_fills_series_rating_by_tvdb_id(self):
+        from integrations.tests.test_tmdb import SERIES_DETAIL, TV_SEARCH
+        from integrations.tests.test_tvdb import SERIES as TVDB_SERIES
+
+        no_us = {**SERIES_DETAIL, "content_ratings": {"results": [{"iso_3166_1": "GB", "rating": "18"}]}}
+        self.request.side_effect = lambda url, **kwargs: TV_SEARCH if "/search/" in url else no_us
+        tvdb_calls = []
+
+        def tvdb(url, **kwargs):
+            tvdb_calls.append(url)
+            if url.endswith("/login"):
+                return {"data": {"token": "t"}}
+            return {"data": TVDB_SERIES}
+
+        with patch("integrations.providers.tvdb.request_json", side_effect=tvdb):
+            response = self.client.get(
+                f"/api/libraries/{self.tv.id}/ratings/suggestions/", {"kind": "series", "ids": str(self.series.id)}
+            )
+        result = response.data["results"][0]
+        self.assertEqual((result["status"], result["rating"], result["provider"]), ("suggested", "TV-MA", "tvdb"))
+        self.assertTrue(any("/series/81189/extended" in url for url in tvdb_calls))
+        self.assertFalse(any("/search" in url for url in tvdb_calls))

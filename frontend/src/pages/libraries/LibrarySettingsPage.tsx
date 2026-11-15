@@ -21,6 +21,7 @@ import {
 } from "@/lib/integration-api"
 import { updateLibrarySettings } from "@/lib/api"
 import { useLibraryOutlet } from "@/lib/route-context"
+import { JellyfinLinkEditor } from "@/components/jellyfin/JellyfinPanels"
 import type { Library, ManagementMode } from "@/types"
 
 
@@ -241,6 +242,7 @@ export function LibrarySettingsPage() {
                     <div className="text-sm text-muted-foreground">
                       {link.provider_label} • {link.capabilities.join(", ")}
                     </div>
+                    {link.provider === "jellyfin" && <JellyfinLinkEditor linkId={link.id} />}
                   </div>
                   <Button variant="outline" size="sm" onClick={async () => {
                     try {

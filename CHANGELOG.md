@@ -40,6 +40,10 @@ pre-1.0 development.
 * Added an OMDb integration for movie and TV series metadata, mainly as a second source of real US ratings (IMDb certifications): API-key connection testing, search, details, defensive parsing of OMDb fields and errors, and short-lived key-scoped caching within OMDb's personal, non-commercial terms.
 * Added multi-provider rating suggestions: providers are tried in library priority order, a real rating from any provider wins over an estimate, and IDs found by one provider (such as TMDB's IMDb ID) let the next look the item up directly.
 * Added `metadata_id_namespace` to provider definitions so items with a known provider ID are looked up directly.
+* Added a TheTVDB v4 integration for TV series and movies: API key plus optional subscriber PIN, month-long login tokens with automatic renewal, search, English translations, country content ratings (two- or three-letter country codes), remote IMDb/TMDB IDs, and direct lookups by the TVDB ID TMDB provides.
+* Provider HTTP requests can now send a JSON body (used for TheTVDB login).
+* Added a Jellyfin server integration: connection test, linking each library to its Jellyfin library (suggested by folder name), a Refresh in Jellyfin rescan after NFO changes that never replaces existing metadata, and a parental-control check showing each user's maximum rating, unrated blocking, and how many movies, series, and unrated items they can see.
+* Provider HTTP requests can now use bodiless methods such as POST, and empty responses (HTTP 204) return no data.
 * Added a type-or-pick content rating field to the metadata editor, with standard ratings and their meanings narrowing as you type.
 * Added importing content ratings from indexed NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`), with a preview of what will be filled, kept, or disputed. It only fills empty or previously NFO-imported ratings, never replaces manual or provider ratings, links `tvshow.nfo` to series by folder, normalizes Kodi rating spellings, and works for read-only libraries because no files are changed.
 * Added writing LibraryForge ratings into existing NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`) for media-server parental controls, with a preview, batched writes with progress, and per-file results. Only the rating changes; formatting, comments, other tags, and line endings are kept. Files whose content changed since the last scan are skipped, and read-only libraries are never written.
@@ -61,6 +65,7 @@ pre-1.0 development.
 
 ### Database
 
+* Added migration `integrations.0002_library_link_options`: an `options` field on library integration links. Additive only.
 * Added migration `catalog.0008_channel_content_rating`: a `content_rating` field on channels. Additive only.
 * Added migration `jobs.0004_scan_worker_heartbeat`: a `ScanWorker` heartbeat table, `worker_id` and `cancel_requested` on scan jobs, and a `cancelled` status. Additive only.
 * Added migration `catalog.0007_metadata_provider_provenance`: a `provider` source for field provenance and change sets, plus `source_ref`, `operation_id` (unique), and `details` on change sets. Additive only.

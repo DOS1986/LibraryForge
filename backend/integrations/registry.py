@@ -7,8 +7,10 @@ from integrations.providers.base import (
     IntegrationProvider,
     provider_supports_metadata_target,
 )
+from integrations.providers.jellyfin import JellyfinProvider
 from integrations.providers.omdb import OMDbProvider
 from integrations.providers.tmdb import TMDbProvider
+from integrations.providers.tvdb import TheTVDBProvider
 from integrations.providers.tubearchivist import TubeArchivistProvider
 from integrations.providers.youtube import YouTubeProvider
 from metadata.providers.types import METADATA_TARGET_TYPES, MetadataTargetType
@@ -18,6 +20,8 @@ PROVIDERS: dict[str, type[IntegrationProvider]] = {
     TubeArchivistProvider.definition.key: TubeArchivistProvider,
     TMDbProvider.definition.key: TMDbProvider,
     OMDbProvider.definition.key: OMDbProvider,
+    TheTVDBProvider.definition.key: TheTVDBProvider,
+    JellyfinProvider.definition.key: JellyfinProvider,
 }
 
 
