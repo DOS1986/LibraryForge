@@ -504,7 +504,7 @@ export function LibraryRatingsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Ratings</CardTitle>
+          <CardTitle>Coverage</CardTitle>
           <CardDescription>
             Content ratings for {library.name}. Media servers such as Jellyfin use these for parental controls.
             Suggested ratings come from your metadata provider and are only saved when you apply them.
@@ -529,11 +529,11 @@ export function LibraryRatingsPage() {
           {counts && (
             <div className="grid gap-3 sm:grid-cols-4">
               {(["total", "rated", "missing", "unrecognized"] as const).map(key => (
-                <div key={key} className="rounded-md border p-3">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div key={key} className="rounded-lg border bg-muted/30 px-3 py-2.5">
+                  <div className="text-xs font-medium text-muted-foreground">
                     {key === "total" ? "Total" : key === "missing" ? "No rating" : STATUS_LABELS[key]}
                   </div>
-                  <div className="text-2xl font-semibold">{counts[key]}</div>
+                  <div className="mt-0.5 text-2xl font-semibold tabular-nums">{counts[key]}</div>
                 </div>
               ))}
             </div>

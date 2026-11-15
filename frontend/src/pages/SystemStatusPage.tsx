@@ -4,6 +4,8 @@ import {
   useState,
 } from "react"
 
+
+import { PageHeader } from "@/components/app/PageHeader"
 import {
   Badge,
 } from "@/components/ui/badge"
@@ -37,7 +39,7 @@ function StateBadge({
   label: string
 }) {
   return (
-    <Badge variant={ok ? "secondary" : "destructive"}>
+    <Badge variant={ok ? "success" : "destructive"}>
       {label}
     </Badge>
   )
@@ -88,37 +90,30 @@ export function SystemStatusPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>System Status</CardTitle>
-              <CardDescription className="mt-2">
-                Runtime, dependency, and restart-supervisor information for this LibraryForge instance.
-              </CardDescription>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+      <PageHeader
+        title="System"
+        description="Runtime, dependency, and restart-supervisor information for this LibraryForge instance."
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        }
+      />
 
       {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {system && (
         <>
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
@@ -182,7 +177,7 @@ export function SystemStatusPage() {
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Version
                 </div>
                 <div className="mt-1 font-medium">
@@ -191,7 +186,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Environment
                 </div>
                 <div className="mt-1 font-medium">
@@ -200,7 +195,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Git
                 </div>
                 <div className="mt-1 font-medium">
@@ -210,7 +205,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Runtime started
                 </div>
                 <div className="mt-1 font-medium">

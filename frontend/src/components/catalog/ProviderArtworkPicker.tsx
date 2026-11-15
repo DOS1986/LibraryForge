@@ -195,7 +195,7 @@ export function ProviderArtworkPicker({
       )}
 
       {data && !data.writable && (
-        <p className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2" role="note">
+        <p className="rounded-lg border border-warning/40 bg-warning/10 p-2" role="note">
           This library is Read Only, so artwork can be browsed but not saved. Switch it to Sidecar Only in Settings to save
           artwork beside its files.
         </p>
@@ -290,7 +290,7 @@ export function ProviderArtworkPicker({
           )}
 
           {confirm && (
-            <div className="space-y-2 rounded-md bg-muted/50 p-3" role="alertdialog" aria-label="Replace artwork">
+            <div className="space-y-2 rounded-lg border bg-muted/40 p-3" role="alertdialog" aria-label="Replace artwork">
               <p>{confirm}</p>
               <div className="flex gap-2">
                 <Button disabled={saving} onClick={() => void save(true)}>

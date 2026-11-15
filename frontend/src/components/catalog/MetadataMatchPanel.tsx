@@ -856,7 +856,7 @@ export function MetadataMatchPanel({
                 <span className="text-muted-foreground">Nothing changes until you confirm.</span>
               </div>
             ) : (
-              <div className="space-y-2 rounded-md bg-muted/50 p-3">
+              <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
                 <p>
                   Update this {kind === "movie" ? "movie" : "series"} with the {selectedRows.length} change
                   {selectedRows.length === 1 ? "" : "s"} listed above from {preview.connection.provider_label}?

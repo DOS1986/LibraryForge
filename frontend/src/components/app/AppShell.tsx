@@ -1,470 +1,129 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react"
+import { useCallback, useEffect, useState } from "react"
 
-import {
-  NavLink,
-  Outlet,
-  useNavigate,
-} from "react-router-dom"
+import { Search } from "lucide-react"
+import { Outlet, useNavigate } from "react-router-dom"
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { AccountMenu } from "@/components/app/AccountMenu"
+import { AppSidebar } from "@/components/app/AppSidebar"
+import { Breadcrumbs } from "@/components/app/Breadcrumbs"
+import { CommandPalette } from "@/components/app/CommandPalette"
+import { ThemeMenu } from "@/components/app/ThemeMenu"
+import { CreateLibraryCard } from "@/components/libraries/CreateLibraryCard"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 
-import {
-  Separator,
-} from "@/components/ui/separator"
+import { getLibraries, logout } from "@/lib/api"
 
-import {
-  AccountMenu,
-} from "@/components/app/AccountMenu"
-
-import {
-  BuildVersionCard,
-} from "@/components/app/BuildVersionCard"
-
-import {
-  CreateLibraryCard,
-} from "@/components/libraries/CreateLibraryCard"
-
-import {
-  getLibraries,
-  logout,
-} from "@/lib/api"
-
-import {
-  useUserSettings,
-} from "@/lib/user-settings"
-
-import type {
-  AppOutletContext,
-} from "@/lib/route-context"
-
-import type {
-  Library,
-  RestartRequestResult,
-  User,
-} from "@/types"
-
-
-const librarySections = [
-  {
-    path:
-      "overview",
-
-    label:
-      "Overview",
-  },
-  {
-    path:
-      "media",
-
-    label:
-      "Media",
-  },
-  {
-    path:
-      "files",
-
-    label:
-      "Files",
-  },
-  {
-    path:
-      "nfo",
-
-    label:
-      "NFO",
-  },
-  {
-    path:
-      "sources",
-
-    label:
-      "Sources",
-  },
-  {
-    path:
-      "attention",
-
-    label:
-      "Needs Attention",
-  },
-  {
-    path:
-      "ratings",
-
-    label:
-      "Ratings",
-  },
-  {
-    path:
-      "projections",
-
-    label:
-      "Projections",
-  },
-  {
-    path:
-      "settings",
-
-    label:
-      "Settings",
-  },
-] as const
+import type { AppOutletContext } from "@/lib/route-context"
+import type { Library, RestartRequestResult, User } from "@/types"
 
 
 interface AppShellProps {
   user: User
-
-  onLogout:
-    () => void
-
-  onRestartStarted:
-    (result: RestartRequestResult) => void
+  onLogout: () => void
+  onRestartStarted: (result: RestartRequestResult) => void
 }
 
 
-export function AppShell({
-  user,
-  onLogout,
-  onRestartStarted,
-}: AppShellProps) {
-  const [
-    libraries,
-    setLibraries,
-  ] = useState<
-    Library[]
-  >([])
-
-  const [
-    librariesLoading,
-    setLibrariesLoading,
-  ] = useState(true)
-
-  const navigate =
-    useNavigate()
-
-  const {
-    settings,
-  } = useUserSettings()
+// The sidebar component remembers open/collapsed in this cookie.
+function sidebarStartsOpen() {
+  return !document.cookie.split("; ").includes("sidebar_state=false")
+}
 
 
-  const refreshLibraries =
-    useCallback(
-      async () => {
-        setLibrariesLoading(
-          true
-        )
-
-        try {
-          setLibraries(
-            await getLibraries()
-          )
-
-        } finally {
-          setLibrariesLoading(
-            false
-          )
-        }
-      },
-      [],
-    )
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
 
 
-  useEffect(
-    () => {
-      void refreshLibraries()
-    },
-    [
-      refreshLibraries,
-    ],
-  )
+export function AppShell({ user, onLogout, onRestartStarted }: AppShellProps) {
+  const [libraries, setLibraries] = useState<Library[]>([])
+  const [librariesLoading, setLibrariesLoading] = useState(true)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const navigate = useNavigate()
 
+  const refreshLibraries = useCallback(async () => {
+    setLibrariesLoading(true)
+    try {
+      setLibraries(await getLibraries())
+    } finally {
+      setLibrariesLoading(false)
+    }
+  }, [])
 
-  async function handleCreated(
-    library: Library,
-  ) {
+  useEffect(() => {
+    void refreshLibraries()
+  }, [refreshLibraries])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        setSearchOpen(value => !value)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
+  const openAdd = useCallback(() => setAddOpen(true), [])
+
+  async function handleCreated(library: Library) {
+    setAddOpen(false)
     await refreshLibraries()
-
-    navigate(
-      `/libraries/${library.id}/overview`
-    )
+    navigate(`/libraries/${library.id}/overview`)
   }
-
 
   async function handleSignOut() {
     await logout()
-
     onLogout()
   }
 
-
-  const outletContext:
-    AppOutletContext = {
-      libraries,
-      librariesLoading,
-      refreshLibraries,
-    }
-
+  const outletContext: AppOutletContext = { libraries, librariesLoading, refreshLibraries, openAddLibrary: openAdd }
 
   return (
-    <main
-      className="
-        min-h-screen
-        bg-muted/30
-      "
-    >
-      <header
-        className="
-          border-b
-          bg-background
-        "
-      >
-        <div
-          className="
-            mx-auto
-            flex
-            max-w-[1800px]
-            items-center
-            justify-between
-            px-6
-            py-4
-          "
-        >
-          <div>
-            <div
-              className="
-                text-2xl
-                font-bold
-              "
-            >
-              LibraryForge
-            </div>
+    <SidebarProvider defaultOpen={sidebarStartsOpen()}>
+      <AppSidebar libraries={libraries} loading={librariesLoading} onAddLibrary={openAdd} />
 
-            <div
-              className="
-                text-sm
-                text-muted-foreground
-              "
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-1 h-5" />
+          <Breadcrumbs libraries={libraries} />
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-9 justify-start gap-2 px-2.5 text-muted-foreground sm:w-56"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Quick search"
             >
-              Your media. Your metadata. Your structure.
-            </div>
+              <Search />
+              <span className="hidden flex-1 text-left sm:inline">Search...</span>
+              <kbd className="hidden rounded border bg-muted px-1.5 text-[0.6875rem] font-normal sm:inline">
+                {isMac ? "⌘" : "Ctrl"} K
+              </kbd>
+            </Button>
+            <ThemeMenu />
+            <AccountMenu user={user} onLogout={handleSignOut} onRestartStarted={onRestartStarted} />
           </div>
+        </header>
 
-          <AccountMenu
-            user={user}
-            onLogout={handleSignOut}
-            onRestartStarted={onRestartStarted}
-          />
+        <div className="mx-auto w-full max-w-[1600px] flex-1 space-y-6 px-4 py-6 md:px-8 md:py-8">
+          <Outlet context={outletContext} />
         </div>
-      </header>
+      </SidebarInset>
 
-      <div
-        className="
-          mx-auto
-          grid
-          max-w-[1800px]
-          gap-6
-          p-6
-          xl:grid-cols-[340px_1fr]
-        "
-      >
-        <aside
-          className="
-            space-y-6
-          "
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Navigation
-              </CardTitle>
-            </CardHeader>
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} libraries={libraries} onAddLibrary={openAdd} />
 
-            <CardContent
-              className="
-                space-y-4
-              "
-            >
-              <NavLink
-                to="/"
-                end
-                className={
-                  ({
-                    isActive,
-                  }) =>
-                    (
-                      "block rounded-md px-3 py-2 "
-                      + (
-                        isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-muted"
-                      )
-                    )
-                }
-              >
-                Dashboard
-              </NavLink>
-
-              {
-                librariesLoading
-                ? (
-                  <div
-                    className="
-                      text-sm
-                      text-muted-foreground
-                    "
-                  >
-                    Loading libraries...
-                  </div>
-                )
-                : (
-                  <div
-                    className="
-                      space-y-3
-                    "
-                  >
-                    {
-                      libraries.map(
-                        (
-                          library
-                        ) => (
-                          <div
-                            key={
-                              library.id
-                            }
-                            className="
-                              rounded-md
-                              border
-                              p-3
-                            "
-                          >
-                            <div
-                              className="
-                                font-medium
-                              "
-                            >
-                              {
-                                library.name
-                              }
-                            </div>
-
-                            <div
-                              className="
-                                mt-1
-                                truncate
-                                text-xs
-                                text-muted-foreground
-                              "
-                            >
-                              {
-                                library.path
-                              }
-                            </div>
-
-                            <div
-                              className="
-                                mt-3
-                                grid
-                                grid-cols-2
-                                gap-1
-                                text-xs
-                              "
-                            >
-                              {
-                                librarySections.map(
-                                  (
-                                    section
-                                  ) => (
-                                    <NavLink
-                                      key={
-                                        section.path
-                                      }
-                                      to={
-                                        `/libraries/${library.id}/${section.path}`
-                                      }
-                                      className={
-                                        ({
-                                          isActive,
-                                        }) =>
-                                          (
-                                            "rounded px-2 py-1 "
-                                            + (
-                                              isActive
-                                                ? "bg-primary text-primary-foreground"
-                                                : "hover:bg-muted"
-                                            )
-                                          )
-                                      }
-                                    >
-                                      {
-                                        section.label
-                                      }
-                                    </NavLink>
-                                  )
-                                )
-                              }
-                            </div>
-                          </div>
-                        )
-                      )
-                    }
-                  </div>
-                )
-              }
-
-              <Separator />
-
-              <NavLink
-                to="/jobs"
-                className={
-                  ({
-                    isActive,
-                  }) =>
-                    (
-                      "block rounded-md px-3 py-2 "
-                      + (
-                        isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-muted"
-                      )
-                    )
-                }
-              >
-                Jobs
-              </NavLink>
-            </CardContent>
-          </Card>
-
-          <CreateLibraryCard
-            onCreated={
-              handleCreated
-            }
-          />
-
-          {
-            (settings?.show_build_information ?? true)
-            && (
-              <BuildVersionCard />
-            )
-          }
-        </aside>
-
-        <section>
-          <Outlet
-            context={
-              outletContext
-            }
-          />
-        </section>
-      </div>
-    </main>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-2xl">
+          <DialogTitle className="sr-only">Add a library</DialogTitle>
+          <CreateLibraryCard onCreated={handleCreated} />
+        </DialogContent>
+      </Dialog>
+    </SidebarProvider>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
 
+import { PageHeader } from "@/components/app/PageHeader"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -129,26 +129,16 @@ export function IntegrationsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Settings</CardTitle>
-              <CardDescription>Configure LibraryForge and external read-only/provider connections.</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/settings" className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">General</Link>
-              <Link to="/settings/integrations" className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">Integrations</Link>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <PageHeader
+        title="Integrations"
+        description="Connections are created once here and then assigned to individual libraries. They can provide metadata, artwork, catalog relationships, or outputs. LibraryForge never downloads or acquires media."
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle>Integrations</CardTitle>
+          <CardTitle>Providers</CardTitle>
           <CardDescription>
-            Connections are created once here and then assigned to individual libraries. Integrations may provide metadata, artwork, catalog relationships, or outputs. LibraryForge has no acquisition/download integration capability.
+            Add a connection, then assign it to libraries on each library&apos;s Settings page.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">

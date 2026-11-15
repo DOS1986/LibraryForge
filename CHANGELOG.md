@@ -59,6 +59,15 @@ pre-1.0 development.
 
 ### Changed
 
+* Rebranded and redesigned the web interface. A new LibraryForge identity (logo mark, favicon, ember-on-stone "Forge" palette, and type). Light and dark themes that follow the system until you choose, remembered per browser and applied before the page draws. A compact density option for large tables.
+* New navigation: a collapsible sidebar with Dashboard, Jobs, each library with its pages (Overview, Media, Files, NFO, Sources, Needs Attention, Ratings, Projections, Settings), and Setup (Integrations, Settings, System). It collapses to icons and slides out on phones. Breadcrumbs and a Ctrl+K / Cmd+K quick search jump to any page, library page, or appearance setting.
+* New sign-in page, dashboard (library stats and library cards with quick links), shared page headers, and an Add library dialog. Buttons, cards, inputs, badges, tabs, menus, and dialogs were restyled, so every page uses the new look.
+* Page layout pass:
+  * Library Overview has stat tiles and a list of the library's pages. Needs Attention is one card.
+  * Count tiles, notices, and status badges match everywhere: jobs and health checks are green when done or available, amber when completed with errors.
+  * System health checks sit side by side. Settings is a narrower column.
+  * Folder browsers show progress while loading.
+  * The sidebar keeps only the current library expanded.
 * Provider HTTP errors now record a failure reason (timeout, unreachable, invalid JSON, oversized response) and any `Retry-After` delay so adapters can classify failures without parsing messages.
 * Integration connection errors from metadata providers now show the provider's sanitized message.
 * Metadata history now includes each change set's source reference.

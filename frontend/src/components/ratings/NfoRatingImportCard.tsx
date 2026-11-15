@@ -140,9 +140,9 @@ export function NfoRatingImportCard({
           <>
             <div className="grid gap-2 sm:grid-cols-4">
               {SUMMARY_ORDER.map(action => (
-                <div key={action} className="rounded-md border p-2">
+                <div key={action} className="rounded-lg border bg-muted/30 px-3 py-2.5">
                   <div className="text-xs text-muted-foreground">{ACTION_LABELS[action]}</div>
-                  <div className="text-lg font-semibold">{preview.summary[action]}</div>
+                  <div className="mt-0.5 text-xl font-semibold tabular-nums">{preview.summary[action]}</div>
                 </div>
               ))}
             </div>
@@ -154,7 +154,7 @@ export function NfoRatingImportCard({
             )}
 
             {confirming && (
-              <div className="space-y-2 rounded-md bg-muted/50 p-3">
+              <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
                 <p>
                   Set the rating on {toWrite} {noun}
                   {toWrite === 1 || kind === "series" ? "" : "s"} from their NFO files? Items with a different,

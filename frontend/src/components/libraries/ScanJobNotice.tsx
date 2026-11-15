@@ -54,14 +54,14 @@ export function ScanJobNotice({
   return (
     <div className="space-y-2 text-sm">
       {job.waiting_for_worker && (
-        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3" role="status">
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3" role="status">
           <span className="font-medium">Waiting for the scan worker.</span> No scan worker is running, so this scan
           won&apos;t start yet. <WorkerHelp />
         </div>
       )}
 
       {job.stalled && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3" role="alert">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3" role="alert">
           <span className="font-medium">This scan stopped.</span> The worker that was running it is no longer
           running. Start a new scan to replace it; this one will be marked as interrupted.
         </div>
@@ -118,7 +118,7 @@ export function ScanWorkerBanner() {
 
   if (!status.alive) {
     return (
-      <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm" role="status">
+      <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm" role="status">
         <span className="font-medium">No scan worker is running.</span>{" "}
         {status.queued_jobs > 0
           ? `${status.queued_jobs} queued scan${status.queued_jobs === 1 ? " is" : "s are"} waiting. `

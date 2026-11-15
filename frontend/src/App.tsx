@@ -24,6 +24,10 @@ import {
 } from "@/components/auth/LoginScreen"
 
 import {
+  LogoMark,
+} from "@/components/brand/Logo"
+
+import {
   getMe,
 } from "@/lib/api"
 
@@ -157,8 +161,9 @@ function App() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        Loading LibraryForge...
+      <main className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background text-muted-foreground" role="status">
+        <LogoMark className="size-12 animate-pulse" />
+        <span className="text-sm">Loading LibraryForge...</span>
       </main>
     )
   }

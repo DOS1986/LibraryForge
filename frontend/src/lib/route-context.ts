@@ -12,6 +12,8 @@ export interface AppOutletContext {
   librariesLoading: boolean
   refreshLibraries:
     () => Promise<void>
+  // Opens the "Add a library" dialog.
+  openAddLibrary?: () => void
 }
 
 

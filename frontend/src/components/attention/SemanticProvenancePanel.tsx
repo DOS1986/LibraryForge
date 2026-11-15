@@ -95,7 +95,7 @@ export function SemanticProvenancePanel({
 
   if (error) {
     return (
-      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
         {error}
       </div>
     )

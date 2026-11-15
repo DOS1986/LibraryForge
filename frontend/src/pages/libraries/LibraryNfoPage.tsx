@@ -502,7 +502,7 @@ export function LibraryNfoPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            NFO
+            NFO files
           </CardTitle>
 
           <CardDescription>

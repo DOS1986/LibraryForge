@@ -110,7 +110,7 @@ function ManagementModeEditor({
       </div>
       {selected && <p className="text-sm text-muted-foreground">{selected.description}</p>}
       {confirming && (
-        <div className="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
+        <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
           <p>
             Allow LibraryForge to change files under <span className="break-all font-medium">{library.path}</span>?
             Every file change still needs a preview and your confirmation.
@@ -174,30 +174,26 @@ export function LibrarySettingsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Library Settings</CardTitle>
-              <CardDescription>Configuration for {library.name}.</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={tab === "general" ? "default" : "outline"}
-                onClick={() => setSearchParams({})}
-              >
-                General
-              </Button>
-              <Button
-                variant={tab === "integrations" ? "default" : "outline"}
-                onClick={() => setSearchParams({ tab: "integrations" })}
-              >
-                Integrations
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <div className="inline-flex rounded-lg border bg-card p-1 shadow-xs" role="tablist" aria-label="Library settings sections">
+        <Button
+          size="sm"
+          role="tab"
+          aria-selected={tab === "general"}
+          variant={tab === "general" ? "default" : "ghost"}
+          onClick={() => setSearchParams({})}
+        >
+          General
+        </Button>
+        <Button
+          size="sm"
+          role="tab"
+          aria-selected={tab === "integrations"}
+          variant={tab === "integrations" ? "default" : "ghost"}
+          onClick={() => setSearchParams({ tab: "integrations" })}
+        >
+          Integrations
+        </Button>
+      </div>
 
       {tab === "general" ? (
         <Card>
@@ -220,7 +216,7 @@ export function LibrarySettingsPage() {
       ) : (
         <>
           {error && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
               {error}
             </div>
           )}

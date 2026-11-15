@@ -302,7 +302,7 @@ export function YouTubeShowsPanel({
               {error && <p className="text-destructive" role="alert">{error}</p>}
 
               {blocked && (
-                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3" role="alert">
+                <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3" role="alert">
                   {plan?.source_error && <p>Library folder: {plan.source_error}</p>}
                   {plan?.destination_error && <p>Destination: {plan.destination_error}</p>}
                 </div>
@@ -311,9 +311,9 @@ export function YouTubeShowsPanel({
               {plan && (
                 <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
                   {ACTION_ORDER.filter(action => action !== "artwork" || plan.artwork_available).map(action => (
-                    <div key={action} className="rounded-md border p-2">
+                    <div key={action} className="rounded-lg border bg-muted/30 px-3 py-2.5">
                       <div className="text-xs text-muted-foreground">{ACTION_LABELS[action]}</div>
-                      <div className="text-lg font-semibold">{plan.summary[action]}</div>
+                      <div className="mt-0.5 text-xl font-semibold tabular-nums">{plan.summary[action]}</div>
                     </div>
                   ))}
                 </div>
@@ -413,7 +413,7 @@ export function YouTubeShowsPanel({
                 </details>
               )}
 
-              <div className="space-y-1 rounded-md bg-muted/50 p-3 text-xs">
+              <div className="space-y-1 rounded-lg border bg-muted/40 p-3 text-xs">
                 <p className="font-medium">In Jellyfin</p>
                 <ol className="list-decimal space-y-1 pl-4">
                   <li>Add {selected.destination_path} as a <span className="font-medium">Shows</span> library.</li>

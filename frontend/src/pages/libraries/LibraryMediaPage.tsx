@@ -367,7 +367,7 @@ export function LibraryMediaPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Media
+              Catalog
             </CardTitle>
 
             <CardDescription>
