@@ -24,6 +24,8 @@ import type {
   MetadataMatchPreview,
   MetadataMatchSearchResult,
   MetadataSource,
+  NfoExportBatch,
+  NfoExportPreview,
   NfoImportPreview,
   RatingCoverage,
   RatingSuggestions,
@@ -1420,6 +1422,36 @@ export async function applyNfoRatingImport(
     {
       method: "POST",
       body: JSON.stringify({ kind }),
+    },
+  )
+}
+
+
+// Read-only preview of writing catalog ratings into existing NFO files.
+export async function previewNfoRatingExport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  return request<NfoExportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-export/` + queryString({ kind }),
+  )
+}
+
+
+// Writes one batch of NFO rating changes, continuing after `cursor`.
+export async function writeNfoRatingBatch(
+  libraryId: string,
+  kind: MetadataMatchKind,
+  cursor: string | null,
+  batch = 100,
+) {
+  await ensureCsrf()
+
+  return request<NfoExportBatch>(
+    `/api/libraries/${libraryId}/ratings/nfo-export/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind, cursor, batch }),
     },
   )
 }

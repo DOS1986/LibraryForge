@@ -19,11 +19,119 @@ import {
   type IntegrationProviderDefinition,
   type LibraryIntegration,
 } from "@/lib/integration-api"
+import { updateLibrarySettings } from "@/lib/api"
 import { useLibraryOutlet } from "@/lib/route-context"
+import type { Library, ManagementMode } from "@/types"
+
+
+const MODE_OPTIONS: { value: ManagementMode; label: string; description: string }[] = [
+  {
+    value: "read_only",
+    label: "Read Only",
+    description: "LibraryForge never changes any file in this library. Use this for archives other apps manage, such as TubeArchivist.",
+  },
+  {
+    value: "sidecar_only",
+    label: "Sidecar Only",
+    description: "LibraryForge may update sidecar files such as NFOs (for example, writing ratings), but never touches video files.",
+  },
+  {
+    value: "full_control",
+    label: "Full Control",
+    description: "LibraryForge may also manage the library's media files as file-management features are added. Today it allows the same changes as Sidecar Only.",
+  },
+]
+
+
+function ManagementModeEditor({
+  library,
+  onSaved,
+}: {
+  library: Library
+  onSaved: () => Promise<void>
+}) {
+  const [mode, setMode] = useState<ManagementMode>(library.management_mode)
+  const [confirming, setConfirming] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMode(library.management_mode)
+    setConfirming(false)
+    setError(null)
+  }, [library.id, library.management_mode])
+
+  const changed = mode !== library.management_mode
+  const loosening = library.management_mode === "read_only" && mode !== "read_only"
+  const selected = MODE_OPTIONS.find(option => option.value === mode)
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLibrarySettings(library.id, { management_mode: mode })
+      await onSaved()
+      setConfirming(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to change the management mode.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <label htmlFor="management-mode" className="text-sm text-muted-foreground">Management Mode</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          id="management-mode"
+          className="h-9 rounded-md border bg-background px-3 text-sm"
+          value={mode}
+          disabled={saving}
+          onChange={event => {
+            setMode(event.target.value as ManagementMode)
+            setConfirming(false)
+          }}
+        >
+          {MODE_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        {changed && !confirming && (
+          <Button
+            size="sm"
+            disabled={saving}
+            onClick={() => (loosening ? setConfirming(true) : void save())}
+          >
+            Save
+          </Button>
+        )}
+      </div>
+      {selected && <p className="text-sm text-muted-foreground">{selected.description}</p>}
+      {confirming && (
+        <div className="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
+          <p>
+            Allow LibraryForge to change files under <span className="break-all font-medium">{library.path}</span>?
+            Every file change still needs a preview and your confirmation.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={saving} onClick={() => void save()}>
+              {saving ? "Saving..." : `Change to ${selected?.label}`}
+            </Button>
+            <Button size="sm" variant="outline" disabled={saving} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+    </div>
+  )
+}
 
 
 export function LibrarySettingsPage() {
-  const { library } = useLibraryOutlet()
+  const { library, refreshLibraries } = useLibraryOutlet()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get("tab") === "integrations" ? "integrations" : "general"
 
@@ -105,10 +213,7 @@ export function LibrarySettingsPage() {
               <div className="text-sm text-muted-foreground">Path</div>
               <div className="break-all">{library.path}</div>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Management Mode</div>
-              <div>{library.management_mode_label}</div>
-            </div>
+            <ManagementModeEditor library={library} onSaved={refreshLibraries} />
           </CardContent>
         </Card>
       ) : (

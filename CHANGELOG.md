@@ -34,6 +34,8 @@ pre-1.0 development.
 * Added reviewed rating suggestions: LibraryForge searches the metadata provider for every unrated item on the current page (in sequential batches of 10, with progress and Stop), suggests a rating only for confident matches, and applies each rating only when confirmed, through the validated apply path.
 * Added a choice of 25, 50, 100, or 200 items per page on the Ratings tab, remembered in the browser, with first/previous/next/last navigation.
 * Added importing content ratings from indexed NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`), with a preview of what will be filled, kept, or disputed. It only fills empty or previously NFO-imported ratings, never replaces manual or provider ratings, links `tvshow.nfo` to series by folder, normalizes Kodi rating spellings, and works for read-only libraries because no files are changed.
+* Added writing LibraryForge ratings into existing NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`) for media-server parental controls, with a preview, batched writes with progress, and per-file results. Only the rating changes; formatting, comments, other tags, and line endings are kept. Files changed since the last scan are skipped, and read-only libraries are never written.
+* Added a management mode selector to Library Settings, with confirmation before allowing LibraryForge to change a library's files.
 
 ### Changed
 

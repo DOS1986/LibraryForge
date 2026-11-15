@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 
 import { CatalogItemEditorDialog } from "@/components/catalog/CatalogItemEditorDialog"
 import { NfoRatingImportCard } from "@/components/ratings/NfoRatingImportCard"
+import { NfoRatingExportCard } from "@/components/ratings/NfoRatingExportCard"
 
 import {
   ApiError,
@@ -328,6 +329,11 @@ export function LibraryRatingsPage() {
           setSuggestions({})
           void load(true)
         }}
+      />
+
+      <NfoRatingExportCard
+        libraryId={library.id}
+        kind={kind}
       />
 
       <Card>

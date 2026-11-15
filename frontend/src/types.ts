@@ -1207,3 +1207,47 @@ export interface NfoImportPreview {
   rows_truncated: boolean
   written?: number
 }
+
+
+// Writing catalog ratings into existing NFO files
+
+export type NfoExportAction = "write" | "add" | "unchanged" | "no_nfo" | "unrated"
+
+export interface NfoExportRow {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  rating: string
+  action: NfoExportAction
+  nfo_path: string
+  nfo_rating: string
+}
+
+export interface NfoExportPreview {
+  library_id: string
+  kind: MetadataMatchKind
+  writable: boolean
+  management_mode: ManagementMode
+  summary: Record<NfoExportAction, number>
+  files_to_write: number
+  rows: NfoExportRow[]
+  rows_truncated: boolean
+}
+
+export interface NfoExportProblem {
+  title: string
+  nfo_path: string
+  rating: string
+  previous: string
+  result: "changed_on_disk" | "failed"
+  message: string
+}
+
+export interface NfoExportBatch {
+  library_id: string
+  kind: MetadataMatchKind
+  counts: { written: number; changed_on_disk: number; failed: number }
+  problems: NfoExportProblem[]
+  next_cursor: string | null
+  remaining: number
+}

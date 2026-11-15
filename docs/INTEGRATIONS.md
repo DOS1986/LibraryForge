@@ -128,6 +128,20 @@ A suggested rating is saved only when the person clicks **Apply** for that item.
 - **Outcomes per item:** `set` (empty rating filled), `update` (the current rating came from an earlier NFO import and the NFO changed), `unchanged`, `conflict` (a different rating from another source; kept), `locked` (manual or provider lock; kept), `nfo_disagree`, `no_rating_in_nfo`, `no_nfo`.
 - **Writes** happen only for `set` and `update`, and the plan is recomputed at apply time with the rows locked, so a rating changed after the preview is never overwritten. Each imported rating records the NFO as its source (unlocked, so a later NFO change can update it again) and a history entry citing the NFO path. Running the import again is a no-op.
 
+### Writing ratings into NFO files
+
+`GET /api/libraries/<id>/ratings/nfo-export/?kind=<movie|series>` previews, and `POST` (body `{"kind", "cursor", "batch"}`) writes one batch, putting each item's LibraryForge rating into its existing NFO files' `<mpaa>`. Jellyfin and other media servers read their parental ratings from there. The Ratings tab runs batches of 100 with progress and a Stop button.
+
+- **Library mode.** Only libraries in **Sidecar Only** or **Full Control** mode are written. Read-only libraries can be previewed, and a write returns `409` explaining how to change the mode (Library Settings → General → Management Mode).
+- **Which files.** Only existing, successfully parsed movie NFOs (every NFO matched to the movie) and the `tvshow.nfo` linked to a series by folder. No NFO is created; rated items without one are reported as `no_nfo`.
+- **What changes.** Only the `<mpaa>` value. An existing value is replaced, and an empty or self-closing tag is filled. If the tag is missing it is added just before the closing root tag, using the file's own indentation and line endings. Everything else is left byte-for-byte as it was, including comments, other tags, and CRLF line endings.
+- **Safety checks.**
+  - A file whose size or modification time differs from the last scan is skipped as `changed_on_disk` (rescan, then try again).
+  - The edited document is re-parsed and must still have the same root and the new rating before it is written.
+  - Writes go through the hardened NFO writer, which confines paths to the library root, re-checks symlinks, writes to a temporary file, and replaces atomically.
+  - Per-file failures are reported without stopping the batch.
+- **Afterwards,** refresh the library's metadata in the media server so it re-reads the NFOs. If the media server's own NFO saver is enabled, it may later rewrite these files from its own metadata.
+
 Episodes are not rated individually here. Media servers generally apply a series' rating to its episodes, but writing ratings into NFO files for Jellyfin is a separate step.
 
 ## Failure behavior
