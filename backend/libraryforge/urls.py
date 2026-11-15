@@ -63,6 +63,7 @@ from metadata.rating_views import (
     library_nfo_rating_import_view,
     library_rating_suggestions_view,
     library_ratings_view,
+    library_set_ratings_view,
 )
 from metadata.match_views import (
     match_apply_view,
@@ -302,6 +303,12 @@ urlpatterns = [
         "api/libraries/<uuid:library_id>/ratings/",
         library_ratings_view,
         name="library-ratings",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/set/",
+        library_set_ratings_view,
+        name="library-ratings-set",
     ),
 
     path(

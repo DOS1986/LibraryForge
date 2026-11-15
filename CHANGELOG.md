@@ -33,18 +33,30 @@ pre-1.0 development.
 * Added a library Ratings tab with content-rating coverage for movies and TV series: counts and filters for rated, missing, and unrecognized ratings, title search, and each rating's source.
 * Added reviewed rating suggestions: LibraryForge searches the metadata provider for every unrated item on the current page (in sequential batches of 10, with progress and Stop), suggests a rating only for confident matches, and applies each rating only when confirmed, through the validated apply path.
 * Added a choice of 25, 50, 100, or 200 items per page on the Ratings tab, remembered in the browser, with first/previous/next/last navigation.
+* Added content ratings for online video channels (rated like TV series), and Ratings tabs that show every kind of item a library contains, including mixed libraries.
+* Added setting or clearing ratings by hand for selected movies, series, or channels on the Ratings tab, recorded as locked manual edits with history.
 * Added importing content ratings from indexed NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`), with a preview of what will be filled, kept, or disputed. It only fills empty or previously NFO-imported ratings, never replaces manual or provider ratings, links `tvshow.nfo` to series by folder, normalizes Kodi rating spellings, and works for read-only libraries because no files are changed.
-* Added writing LibraryForge ratings into existing NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`) for media-server parental controls, with a preview, batched writes with progress, and per-file results. Only the rating changes; formatting, comments, other tags, and line endings are kept. Files changed since the last scan are skipped, and read-only libraries are never written.
+* Added writing LibraryForge ratings into existing NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`) for media-server parental controls, with a preview, batched writes with progress, and per-file results. Only the rating changes; formatting, comments, other tags, and line endings are kept. Files whose content changed since the last scan are skipped, and read-only libraries are never written.
 * Added a management mode selector to Library Settings, with confirmation before allowing LibraryForge to change a library's files.
+* Added a scan worker heartbeat so LibraryForge knows whether a scan worker is running. The scan panel and Jobs page show when a scan is waiting because no worker is running (with how to start one), when a scan stopped because its worker stopped, and whether the worker is idle or scanning.
+* Added cancelling scans: queued and stopped scans end immediately, and running scans stop at their next progress checkpoint, which always comes before files are marked missing.
+* Added `run_scan_worker --workers N` (and `LIBRARYFORGE_SCAN_WORKERS`) to scan up to N libraries at once. A supervisor runs N worker processes, restarts crashed workers, drains them on restart requests, and stops them together; workers stop if the supervisor goes away.
 
 ### Changed
 
 * Provider HTTP errors now record a failure reason (timeout, unreachable, invalid JSON, oversized response) and any `Retry-After` delay so adapters can classify failures without parsing messages.
 * Integration connection errors from metadata providers now show the provider's sanitized message.
 * Metadata history now includes each change set's source reference.
+* Writing ratings to NFO files now compares each file's content with the indexed copy instead of its timestamp, so files a media server re-saved without changes can be updated. Files whose content changed are still skipped.
+
+### Fixed
+
+* A scan whose worker stopped mid-scan no longer stays "running" forever and blocks new scans of that library. Workers mark such scans as interrupted when they start, and starting a new scan replaces one whose worker is gone.
 
 ### Database
 
+* Added migration `catalog.0008_channel_content_rating`: a `content_rating` field on channels. Additive only.
+* Added migration `jobs.0004_scan_worker_heartbeat`: a `ScanWorker` heartbeat table, `worker_id` and `cancel_requested` on scan jobs, and a `cancelled` status. Additive only.
 * Added migration `catalog.0007_metadata_provider_provenance`: a `provider` source for field provenance and change sets, plus `source_ref`, `operation_id` (unique), and `details` on change sets. Additive only.
 
 ## [0.1.0-alpha.4] - 2026-08-11

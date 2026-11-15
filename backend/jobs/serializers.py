@@ -15,6 +15,28 @@ class ScanJobSerializer(serializers.ModelSerializer):
         source="get_status_display",
         read_only=True,
     )
+    waiting_for_worker = serializers.SerializerMethodField()
+    stalled = serializers.SerializerMethodField()
+
+    def _live_workers(self):
+        # Computed once per response, not once per job.
+        if "live_workers" not in self.context:
+            from jobs.services import live_worker_ids
+
+            self.context["live_workers"] = live_worker_ids()
+        return self.context["live_workers"]
+
+    def get_waiting_for_worker(self, obj):
+        """Queued, and no scan worker is running to pick it up."""
+
+        return obj.status == ScanJob.Status.QUEUED and not self._live_workers()
+
+    def get_stalled(self, obj):
+        """Looks active, but the worker that was running it has stopped."""
+
+        from jobs.services import is_stalled
+
+        return is_stalled(obj, self._live_workers())
 
     class Meta:
         model = ScanJob
@@ -25,6 +47,9 @@ class ScanJobSerializer(serializers.ModelSerializer):
             "library_name",
             "status",
             "status_label",
+            "waiting_for_worker",
+            "stalled",
+            "cancel_requested",
             "total_files",
             "processed_files",
             "total_media_files",

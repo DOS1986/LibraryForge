@@ -12,10 +12,12 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
-from catalog.models import CanonicalFieldState, Series
+from catalog.models import CanonicalFieldState, Channel, Series
+from catalog.services.canonical import _record_manual_changes
 from libraries.models import Library
 from media.models import MediaItem
 from metadata.providers.types import MetadataProviderError, MetadataTargetType
@@ -44,10 +46,27 @@ DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 200
 MAX_SUGGESTIONS = 10
 
+KIND_MOVIE = MetadataTargetType.MOVIE.value
+KIND_SERIES = MetadataTargetType.SERIES.value
+KIND_CHANNEL = "channel"
+
 _KIND_TARGETS = {
-    MetadataTargetType.MOVIE.value: CanonicalFieldState.TargetType.MEDIA_ITEM,
-    MetadataTargetType.SERIES.value: CanonicalFieldState.TargetType.SERIES,
+    KIND_MOVIE: CanonicalFieldState.TargetType.MEDIA_ITEM,
+    KIND_SERIES: CanonicalFieldState.TargetType.SERIES,
+    # Online-video channels are presented to media servers as TV series.
+    KIND_CHANNEL: CanonicalFieldState.TargetType.CHANNEL,
 }
+
+KIND_INFO = {
+    KIND_MOVIE: {"label": "Movies", "provider_suggestions": True, "nfo": True},
+    KIND_SERIES: {"label": "TV series", "provider_suggestions": True, "nfo": True},
+    KIND_CHANNEL: {"label": "Online video channels", "provider_suggestions": False, "nfo": False},
+}
+
+# The kind a library shows first, by its content type.
+_DEFAULT_KIND = {"movies": KIND_MOVIE, "tv": KIND_SERIES, "online_video": KIND_CHANNEL}
+
+MAX_MANUAL_ITEMS = 500
 
 
 def rating_status(value: str | None) -> str:
@@ -62,11 +81,13 @@ def owned_library(*, user, library_id) -> Library:
 
 
 def _queryset(library: Library, kind: str):
-    if kind == MetadataTargetType.MOVIE.value:
+    if kind == KIND_MOVIE:
         return MediaItem.objects.filter(library=library, media_type=MediaItem.MediaType.MOVIE)
-    if kind == MetadataTargetType.SERIES.value:
+    if kind == KIND_SERIES:
         return Series.objects.filter(library=library)
-    raise MatchRequestError("Kind must be movie or series.")
+    if kind == KIND_CHANNEL:
+        return Channel.objects.filter(library=library)
+    raise MatchRequestError("Kind must be movie, series, or channel.")
 
 
 def _recognized_q() -> Q:
@@ -104,7 +125,9 @@ def _summary(library: Library) -> dict[str, dict[str, int]]:
 
 
 def _year(kind: str, obj) -> int | None:
-    if kind == MetadataTargetType.SERIES.value:
+    if kind == KIND_CHANNEL:
+        return None
+    if kind == KIND_SERIES:
         return obj.start_year
     year = ((obj.canonical_metadata or {}).get("semantic") or {}).get("year")
     if isinstance(year, int):
@@ -138,6 +161,7 @@ def rating_coverage(
     page_number = _page_number(page, "Page", 1, 100_000)
     size = _page_number(page_size, "Page size", DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
 
+    summary = _summary(library)
     queryset = _status_filter(_queryset(library, kind), status or "all")
     if search and search.strip():
         queryset = queryset.filter(title__icontains=search.strip()[:200])
@@ -174,13 +198,85 @@ def rating_coverage(
         "library_id": str(library.id),
         "kind": kind,
         "status": status or "all",
-        "summary": _summary(library),
+        "summary": summary,
         "recognized_ratings": {"movie": list(US_MOVIE_RATINGS), "tv": list(US_TV_RATINGS)},
+        "kinds": available_kinds(library, summary),
         "page": page_number,
         "page_size": size,
         "total": total,
         "next_page": page_number + 1 if page_number * size < total else None,
         "results": results,
+    }
+
+
+def available_kinds(library: Library, summary: dict[str, dict[str, int]] | None = None) -> list[dict[str, Any]]:
+    """Kinds this library actually contains, default first.
+
+    A mixed library lists every kind it holds; an empty library still lists
+    the kind its content type implies, so the tab isn't blank.
+    """
+
+    summary = summary or _summary(library)
+    default = _DEFAULT_KIND.get(library.content_type)
+    kinds = [kind for kind in _KIND_TARGETS if summary[kind]["total"] or kind == default]
+    if not kinds:
+        kinds = [KIND_MOVIE]
+    kinds.sort(key=lambda kind: (kind != default, list(_KIND_TARGETS).index(kind)))
+    return [{"kind": kind, "total": summary[kind]["total"], **KIND_INFO[kind]} for kind in kinds]
+
+
+def set_ratings(library: Library, *, user, kind: str, ids: list[str], rating: Any) -> dict[str, Any]:
+    """Set (or clear) the rating on chosen items by hand.
+
+    Recorded like any manual edit: each changed field is locked with a manual
+    source and gets a history entry, so scans, NFO imports, and provider
+    suggestions won't replace it.
+    """
+
+    if kind not in _KIND_TARGETS:
+        raise MatchRequestError("Kind must be movie, series, or channel.")
+    if not isinstance(rating, str):
+        raise MatchRequestError("Rating must be text.")
+    value = " ".join(rating.split())
+    if len(value) > 64:
+        raise MatchRequestError("Ratings are at most 64 characters.")
+    if value.upper() in RECOGNIZED_RATINGS:
+        value = value.upper()
+
+    requested = [str(item).strip() for item in ids if str(item).strip()]
+    unique_ids = list(dict.fromkeys(_valid_uuids(requested)))
+    if not unique_ids or len(unique_ids) != len(set(requested)):
+        raise MatchRequestError("Choose items with valid IDs.")
+    if len(unique_ids) > MAX_MANUAL_ITEMS:
+        raise MatchRequestError(f"Set at most {MAX_MANUAL_ITEMS} ratings at a time.")
+
+    target_type = _KIND_TARGETS[kind]
+    changed = 0
+    with transaction.atomic():
+        objects = list(_queryset(library, kind).select_for_update().filter(id__in=unique_ids))
+        if len(objects) != len(unique_ids):
+            raise MatchRequestError("Some items aren't in this library.", status=404)
+        for obj in objects:
+            old = obj.content_rating or ""
+            if old == value:
+                continue
+            obj.content_rating = value
+            obj.save(update_fields=["content_rating", "updated_at"])
+            _record_manual_changes(
+                target_type=target_type,
+                target_id=obj.id,
+                changes={"content_rating": {"old": old, "new": value}},
+                user=user,
+                note="Rating cleared on the Ratings tab." if not value else "Rating set on the Ratings tab.",
+            )
+            changed += 1
+    return {
+        "library_id": str(library.id),
+        "kind": kind,
+        "rating": value,
+        "requested": len(unique_ids),
+        "changed": changed,
+        "unchanged": len(unique_ids) - changed,
     }
 
 
@@ -259,8 +355,11 @@ def rating_suggestions(
     ids: list[str],
     connection_id: str | None = None,
 ) -> dict[str, Any]:
-    if kind not in _KIND_TARGETS:
-        raise MatchRequestError("Kind must be movie or series.")
+    if kind not in (KIND_MOVIE, KIND_SERIES):
+        raise MatchRequestError(
+            "Provider rating suggestions are available for movies and TV series. "
+            "Set online video channel ratings by hand."
+        )
     requested = [item.strip() for item in ids if item.strip()]
     if not requested:
         raise MatchRequestError("Choose at least one item.")

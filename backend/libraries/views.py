@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from jobs.models import ScanJob
 from jobs.serializers import ScanJobSerializer
+from jobs.services import is_stalled, recover_interrupted_jobs
 
 from libraries.security import (
     LibraryPathPolicyError,
@@ -144,6 +145,12 @@ class LibraryViewSet(
             )
             .first()
         )
+
+        if existing and is_stalled(existing):
+            # Its worker stopped mid-scan. Close it out so a new scan can run;
+            # otherwise this library could never be scanned again.
+            recover_interrupted_jobs()
+            existing = None
 
         if existing:
             return Response(

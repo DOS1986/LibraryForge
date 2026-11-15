@@ -53,6 +53,27 @@ from .probe import (
 )
 
 
+class ScanCancelled(Exception):
+    """Raised at a progress checkpoint when a user cancelled the scan."""
+
+
+def _raise_if_cancelled(
+    job: ScanJob,
+):
+    # Checked at progress checkpoints only, all of which come before the
+    # step that marks unseen files as missing, so a cancelled scan never
+    # hides files it simply didn't reach.
+    if (
+        ScanJob.objects
+        .filter(
+            pk=job.pk,
+            cancel_requested=True,
+        )
+        .exists()
+    ):
+        raise ScanCancelled()
+
+
 def _add_error(
     errors,
     path,
@@ -240,6 +261,10 @@ def discover_library_files(
                         "errors",
                         "updated_at",
                     ]
+                )
+
+                _raise_if_cancelled(
+                    job
                 )
 
     media_candidates.sort(
@@ -630,6 +655,10 @@ def process_scan_job(
                     ]
                 )
 
+                _raise_if_cancelled(
+                    job
+                )
+
     all_media_files = list(
         MediaFile.objects
         .filter(
@@ -734,6 +763,10 @@ def process_scan_job(
                         "errors",
                         "updated_at",
                     ]
+                )
+
+                _raise_if_cancelled(
+                    job
                 )
 
     if not job.discovery_had_errors:

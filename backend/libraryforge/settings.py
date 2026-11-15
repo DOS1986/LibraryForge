@@ -309,6 +309,13 @@ LIBRARYFORGE_MAX_NFO_BYTES = env.int(
     default=10 * 1024 * 1024,
 )
 
+# Default number of scan worker processes for `run_scan_worker` (so up to
+# this many libraries scan at once). Override per run with --workers N.
+LIBRARYFORGE_SCAN_WORKERS = env.int(
+    "LIBRARYFORGE_SCAN_WORKERS",
+    default=1,
+)
+
 LIBRARYFORGE_ALLOWED_LIBRARY_ROOTS = _clean_list(
     "LIBRARYFORGE_ALLOWED_LIBRARY_ROOTS"
 )

@@ -97,7 +97,7 @@ Provenance: each applied field's `CanonicalFieldState` gets source `provider`, `
 
 ## Content ratings (alpha.5)
 
-Each library has a **Ratings** tab for parental-control coverage. It counts and lists movies and TV series by rating status:
+Each library has a **Ratings** tab for parental-control coverage. It covers every kind of item the library contains: **movies**, **TV series**, and **online video channels** (YouTube/TubeArchivist channels, presented to media servers as TV series, whose videos use the channel's rating). A mixed library lists each kind it holds, and the coverage response's `kinds` says which kinds exist and whether provider suggestions and NFO import/export apply to each. Items are counted and listed by rating status:
 
 - `rated`: a recognized US rating. Movies use MPA ratings (`G`, `PG`, `PG-13`, `R`, `NC-17`) and TV uses TV Parental Guidelines (`TV-Y`, `TV-Y7`, `TV-Y7-FV`, `TV-G`, `TV-PG`, `TV-14`, `TV-MA`). Both sets count as recognized for either kind, because media servers such as Jellyfin compare them on one scale.
 - `missing`: no rating.
@@ -118,6 +118,10 @@ The Ratings tab's **Find ratings** button covers every unrated item on the curre
 
 A suggested rating is saved only when the person clicks **Apply** for that item. That call goes through the metadata-match apply endpoint, so the stale-review checks, provenance, history, scan protection, and duplicate-submission handling all apply. Items that need review can be opened in the catalog editor's Match tab from the list. Suggestions share the metadata provider rate limit.
 
+### Setting ratings by hand
+
+`POST /api/libraries/<id>/ratings/set/` with `{"kind": "movie|series|channel", "ids": [...], "rating": "TV-Y"}` sets the rating on up to 500 items from that library, or clears it with `""`. Recognized US ratings are upper-cased. Each change is recorded like a manual edit: the field gets a manual, locked provenance record and a history entry, so NFO imports and provider suggestions won't replace it. Unchanged items are counted but not rewritten. On the Ratings tab, select rows (or all on the page), choose a rating, and confirm. This is the only way to rate online video channels, since metadata providers don't rate them.
+
 ### Importing ratings from NFO files
 
 `GET /api/libraries/<id>/ratings/nfo-import/?kind=<movie|series>` previews and `POST` (body `{"kind": ...}`) applies importing the `<mpaa>` rating from NFO files LibraryForge has already indexed. It reads stored, parsed NFO data and changes no files, so it works for read-only libraries.
@@ -136,7 +140,7 @@ A suggested rating is saved only when the person clicks **Apply** for that item.
 - **Which files.** Only existing, successfully parsed movie NFOs (every NFO matched to the movie) and the `tvshow.nfo` linked to a series by folder. No NFO is created; rated items without one are reported as `no_nfo`.
 - **What changes.** Only the `<mpaa>` value. An existing value is replaced, and an empty or self-closing tag is filled. If the tag is missing it is added just before the closing root tag, using the file's own indentation and line endings. Everything else is left byte-for-byte as it was, including comments, other tags, and CRLF line endings.
 - **Safety checks.**
-  - A file whose size or modification time differs from the last scan is skipped as `changed_on_disk` (rescan, then try again).
+  - A file whose content differs from the indexed copy is skipped as `changed_on_disk` (rescan, then try again). Content is compared rather than timestamps, because media servers often re-save NFOs without changing them; line-ending differences alone don't count as a change.
   - The edited document is re-parsed and must still have the same root and the new rating before it is written.
   - Writes go through the hardened NFO writer, which confines paths to the library root, re-checks symlinks, writes to a temporary file, and replaces atomically.
   - Per-file failures are reported without stopping the batch.

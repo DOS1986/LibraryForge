@@ -24,6 +24,11 @@ import {
 } from "@/lib/api"
 
 import {
+  ScanJobNotice,
+  ScanWorkerBanner,
+} from "@/components/libraries/ScanJobNotice"
+
+import {
   formatDateTime,
 } from "@/lib/format"
 
@@ -135,6 +140,8 @@ export function JobsPage() {
           space-y-4
         "
       >
+        <ScanWorkerBanner />
+
         <div
           className="
             space-y-3
@@ -200,6 +207,12 @@ export function JobsPage() {
                         job.status_label
                       }
                     </Badge>
+                  </div>
+                  <div className="mt-3">
+                    <ScanJobNotice
+                      job={job}
+                      onChanged={updated => setJobs(current => current.map(item => (item.id === updated.id ? updated : item)))}
+                    />
                   </div>
                 </div>
               )

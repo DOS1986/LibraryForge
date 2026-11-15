@@ -91,6 +91,16 @@ interface CatalogItemEditorDialogProps {
   onChanged?:
     () => Promise<void>
     | void
+
+  // Tab to open first, for example "match".
+  initialTab?: string
+
+  // Options for the Match tab when opened for a quick rating.
+  matchOptions?: {
+    autoSearch?: boolean
+    quickRating?: boolean
+    onRatingSaved?: (rating: string) => void
+  }
 }
 
 
@@ -2288,6 +2298,8 @@ export function CatalogItemEditorDialog({
   id,
   onClose,
   onChanged,
+  initialTab,
+  matchOptions,
 }: CatalogItemEditorDialogProps) {
   const [
     detail,
@@ -2536,7 +2548,13 @@ export function CatalogItemEditorDialog({
             detail
             && (
               <Tabs
-                defaultValue="overview"
+                defaultValue={
+                  initialTab === "match"
+                  && detail.kind !== "movie"
+                  && detail.kind !== "series"
+                    ? "overview"
+                    : initialTab ?? "overview"
+                }
               >
                 <TabsList
                   className="
@@ -2764,6 +2782,13 @@ export function CatalogItemEditorDialog({
                       <MetadataMatchPanel
                         kind={detail.kind}
                         id={detail.id}
+                        autoSearch={matchOptions?.autoSearch}
+                        quickRating={matchOptions?.quickRating}
+                        onRatingSaved={
+                          matchOptions?.onRatingSaved
+                            ? rating => matchOptions.onRatingSaved?.(rating)
+                            : undefined
+                        }
                         onApplied={
                           updated => {
                             setDetail(

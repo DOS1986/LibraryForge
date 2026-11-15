@@ -165,12 +165,35 @@ class ExportTests(_ExportTestCase):
         self.assertEqual(response.data["problems"][0]["result"], "changed_on_disk")
         self.assertEqual(path.read_text(encoding="utf-8"), edited)
 
+    def test_resaved_file_with_identical_content_is_written(self):
+        # Media servers often re-save NFOs unchanged, which only moves the
+        # timestamp. That must not block writing the rating.
+        _item, cars = self.movie("Cars", "G", MOVIE_NFO)
+        path = Path(cars.library.path, *cars.relative_path.split("/"))
+        os.utime(path, ns=(cars.modified_ns + 90 * 86_400 * 10**9, cars.modified_ns + 90 * 86_400 * 10**9))
+        response = self.client.post(self.url(), {"kind": "movie"}, format="json")
+        self.assertEqual(response.data["counts"], {"written": 1, "changed_on_disk": 0, "failed": 0})
+        self.assertIn("<mpaa>G</mpaa>", self.file_text(cars))
+
+    def test_line_ending_differences_alone_are_not_a_change(self):
+        _item, cars = self.movie("Cars", "G", MOVIE_NFO)
+        path = Path(cars.library.path, *cars.relative_path.split("/"))
+        path.write_bytes(MOVIE_NFO.replace("\n", "\r\n").encode("utf-8"))
+        response = self.client.post(self.url(), {"kind": "movie"}, format="json")
+        self.assertEqual(response.data["counts"]["written"], 1)
+        self.assertEqual(
+            path.read_bytes().decode("utf-8"),
+            MOVIE_NFO.replace("\n", "\r\n").replace("<mpaa>NR</mpaa>", "<mpaa>G</mpaa>"),
+        )
+
     def test_unwritable_documents_fail_safely(self):
         _item, broken = self.movie("Cars", "G", "<movie><title>Cars</title></movie>")
         path = Path(broken.library.path, *broken.relative_path.split("/"))
         path.write_text("<movie><title>Cars</title>", encoding="utf-8")
         stat = path.stat()
-        NfoFile.objects.filter(id=broken.id).update(size_bytes=stat.st_size, modified_ns=stat.st_mtime_ns)
+        NfoFile.objects.filter(id=broken.id).update(
+            size_bytes=stat.st_size, modified_ns=stat.st_mtime_ns, raw_xml="<movie><title>Cars</title>"
+        )
         response = self.client.post(self.url(), {"kind": "movie"}, format="json")
         self.assertEqual(response.data["counts"]["failed"], 1)
         self.assertEqual(path.read_text(encoding="utf-8"), "<movie><title>Cars</title>")

@@ -160,16 +160,25 @@ def preview_nfo_export(library: Library, *, kind: str) -> dict[str, Any]:
     }
 
 
+def _normalized(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _read_current(nfo: NfoFile) -> str | None:
-    """Fresh file contents, or None if the file changed since it was indexed."""
+    """Fresh file contents, or None if the content changed since it was indexed.
+
+    Content is compared rather than size and timestamp: media servers often
+    re-save NFOs without changing them, which only moves the timestamp. A
+    file whose content differs from the indexed copy is never overwritten.
+    """
 
     path = secure_nfo._destination_for(nfo)
-    stat = path.stat()
-    if stat.st_size != nfo.size_bytes or stat.st_mtime_ns != nfo.modified_ns:
+    if path.stat().st_size > secure_nfo._max_nfo_bytes() or not nfo.raw_xml:
         return None
-    # newline="" keeps the file's own line endings intact.
+    # newline="" keeps the file's own line endings intact for writing.
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return handle.read()
+        current = handle.read()
+    return current if _normalized(current) == _normalized(nfo.raw_xml) else None
 
 
 def _write_one(nfo: NfoFile, rating: str) -> tuple[str, str]:

@@ -13,7 +13,12 @@ from rest_framework.permissions import IsAuthenticated
 from metadata.match_views import MetadataProviderThrottle, _run
 from metadata.services.nfo_rating_export import apply_nfo_export, preview_nfo_export
 from metadata.services.nfo_ratings import apply_nfo_import, preview_nfo_import
-from metadata.services.ratings import owned_library, rating_coverage, rating_suggestions
+from metadata.services.ratings import (
+    owned_library,
+    rating_coverage,
+    rating_suggestions,
+    set_ratings,
+)
 
 
 @api_view(["GET"])
@@ -84,5 +89,26 @@ def library_nfo_rating_export_view(request, library_id):
             kind=str(request.data.get("kind") or "movie"),
             cursor=request.data.get("cursor") or None,
             batch=request.data.get("batch"),
+        )
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def library_set_ratings_view(request, library_id):
+    """Set or clear the rating on chosen items by hand (body: kind, ids, rating).
+
+    Recorded as manual edits, so later imports and suggestions don't replace them.
+    """
+
+    library = owned_library(user=request.user, library_id=library_id)
+    ids = request.data.get("ids")
+    return _run(
+        lambda: set_ratings(
+            library,
+            user=request.user,
+            kind=str(request.data.get("kind") or ""),
+            ids=ids if isinstance(ids, list) else [],
+            rating=request.data.get("rating"),
         )
     )

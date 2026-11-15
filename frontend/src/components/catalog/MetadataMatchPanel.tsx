@@ -3,6 +3,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +39,12 @@ interface MetadataMatchPanelProps {
   kind: MetadataMatchKind
   id: string
   onApplied?: (detail: CatalogEditorDetail) => void
+  // Run the search with the item's title and year as soon as the tab opens.
+  autoSearch?: boolean
+  // Show a one-click "Save rating" on each result (applies only the rating).
+  quickRating?: boolean
+  // Called after a rating is saved, by either path, with the saved rating.
+  onRatingSaved?: (rating: string, detail: CatalogEditorDetail) => void
 }
 
 
@@ -125,14 +132,16 @@ function toneClass(tone: string) {
 function CandidateButton({
   candidate,
   onSelect,
+  action,
 }: {
   candidate: MetadataMatchCandidate
   onSelect: () => void
+  action?: ReactNode
 }) {
   const [imageFailed, setImageFailed] = useState(false)
 
   return (
-    <li>
+    <li className="space-y-2">
       <button
         type="button"
         onClick={onSelect}
@@ -191,6 +200,7 @@ function CandidateButton({
           </div>
         </div>
       </button>
+      {action}
     </li>
   )
 }
@@ -270,6 +280,9 @@ export function MetadataMatchPanel({
   kind,
   id,
   onApplied,
+  autoSearch = false,
+  quickRating = false,
+  onRatingSaved,
 }: MetadataMatchPanelProps) {
   const [context, setContext] = useState<MetadataMatchContext | null>(null)
   const [contextError, setContextError] = useState<string | null>(null)
@@ -294,6 +307,9 @@ export function MetadataMatchPanel({
   const [applyError, setApplyError] = useState<{ message: string; stale: boolean } | null>(null)
   const [applied, setApplied] = useState<MetadataMatchApplyResult | null>(null)
 
+  const [quickSaving, setQuickSaving] = useState<string | null>(null)
+  const [quickResults, setQuickResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+
   useEffect(() => {
     let cancelled = false
 
@@ -308,10 +324,17 @@ export function MetadataMatchPanel({
           return
         }
 
+        const connection = data.connections.find(item => item.available)?.connection_id ?? ""
+        const defaultYear = data.search_defaults.year ? String(data.search_defaults.year) : ""
+
         setContext(data)
         setQuery(data.search_defaults.query)
-        setYear(data.search_defaults.year ? String(data.search_defaults.year) : "")
-        setConnectionId(data.connections.find(item => item.available)?.connection_id ?? "")
+        setYear(defaultYear)
+        setConnectionId(connection)
+
+        if (autoSearch && connection && data.search_defaults.query) {
+          void runSearch(1, { connection, query: data.search_defaults.query, year: defaultYear })
+        }
       })
       .catch(error => {
         if (!cancelled) {
@@ -322,6 +345,8 @@ export function MetadataMatchPanel({
     return () => {
       cancelled = true
     }
+    // Load (and auto-search) once per item: autoSearch and runSearch are read at load time on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, id])
 
   const available = useMemo(
@@ -336,16 +361,20 @@ export function MetadataMatchPanel({
 
   const activeConnection = available.find(item => item.connection_id === connectionId)
 
-  async function runSearch(page = 1) {
+  async function runSearch(
+    page = 1,
+    // State updates are asynchronous, so the auto-search passes its values.
+    overrides?: { connection: string; query: string; year: string },
+  ) {
     setSearching(true)
     setSearchError(null)
 
     try {
       setResults(
         await searchMetadataMatch(kind, id, {
-          connection: connectionId,
-          query,
-          year,
+          connection: overrides?.connection ?? connectionId,
+          query: overrides?.query ?? query,
+          year: overrides?.year ?? year,
           page,
         }),
       )
@@ -418,6 +447,58 @@ export function MetadataMatchPanel({
     })
   }
 
+  async function saveRatingFrom(candidate: MetadataMatchCandidate) {
+    setQuickSaving(candidate.source_id)
+    setQuickResults(current => {
+      const next = { ...current }
+      delete next[candidate.source_id]
+      return next
+    })
+
+    const report = (ok: boolean, message: string) => {
+      setQuickResults(current => ({ ...current, [candidate.source_id]: { ok, message } }))
+    }
+
+    try {
+      // The server rebuilds and re-checks this preview when applying; only
+      // the rating field is sent.
+      const data = await previewMetadataMatch(kind, id, {
+        connection: connectionId,
+        source_id: candidate.source_id,
+      })
+      const row = data.fields.find(item => item.field === "content_rating")
+
+      if (!row || !row.selectable) {
+        report(
+          false,
+          row?.status === "unchanged"
+            ? `Already rated ${String(row.current)}.`
+            : row?.note || `${data.connection.provider_label} has no rating for this title.`,
+        )
+        return
+      }
+
+      const result = await applyMetadataMatch(kind, id, {
+        connection: data.connection.connection_id,
+        source_id: data.source_id,
+        territory: data.territory,
+        fields: ["content_rating"],
+        target_revision: data.target_revision,
+        provider_snapshot: data.provider_snapshot,
+        operation_id: newOperationId(),
+      })
+
+      const rating = String(row.proposed)
+      report(true, `Saved ${rating}.`)
+      onApplied?.(result.detail)
+      onRatingSaved?.(rating, result.detail)
+    } catch (error) {
+      report(false, errorMessage(error, "Unable to save the rating."))
+    } finally {
+      setQuickSaving(null)
+    }
+  }
+
   function closePreview() {
     setPreview(null)
     setPreviewError(null)
@@ -448,6 +529,10 @@ export function MetadataMatchPanel({
       setPreview(null)
       setConfirming(false)
       onApplied?.(result.detail)
+
+      if (result.change_set.fields.includes("content_rating") && onRatingSaved) {
+        onRatingSaved(String(result.change_set.changes.content_rating?.new ?? ""), result.detail)
+      }
     } catch (error) {
       setApplyError({
         message: errorMessage(error, "Unable to apply these changes."),
@@ -489,7 +574,9 @@ export function MetadataMatchPanel({
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
         Search a metadata provider and compare its details with this {kind === "movie" ? "movie" : "series"}.
-        Nothing in your catalog changes until you review the details and confirm.
+        {quickRating
+          ? "Find the right match below and click Save rating. Only the rating is saved, and you go straight back to Ratings."
+          : "Nothing in your catalog changes until you review the details and confirm."}
       </p>
 
       {applied && !preview && (
@@ -587,6 +674,33 @@ export function MetadataMatchPanel({
                     key={`${candidate.provider}:${candidate.target_type}:${candidate.source_id}`}
                     candidate={candidate}
                     onSelect={() => void openPreview(candidate)}
+                    action={quickRating ? (
+                      <div className="flex flex-wrap items-center gap-2 pl-1 text-sm">
+                        <Button
+                          size="sm"
+                          disabled={quickSaving !== null}
+                          onClick={() => void saveRatingFrom(candidate)}
+                        >
+                          {quickSaving === candidate.source_id ? "Saving..." : "Save rating from this match"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={quickSaving !== null}
+                          onClick={() => void openPreview(candidate)}
+                        >
+                          Compare all fields
+                        </Button>
+                        {quickResults[candidate.source_id] && (
+                          <span
+                            className={quickResults[candidate.source_id].ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
+                            role="status"
+                          >
+                            {quickResults[candidate.source_id].message}
+                          </span>
+                        )}
+                      </div>
+                    ) : undefined}
                   />
                 ))}
               </ul>

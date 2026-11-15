@@ -26,11 +26,13 @@ import {
   applyMetadataMatch,
   getLibraryRatings,
   getRatingSuggestions,
+  setLibraryRatings,
 } from "@/lib/api"
 import { newOperationId } from "@/lib/ids"
 import { useLibraryOutlet } from "@/lib/route-context"
 
 import type {
+  RatingKind,
   MetadataMatchKind,
   RatingCoverage,
   RatingCoverageRow,
@@ -65,6 +67,15 @@ const STATUS_LABELS: Record<RatingStatus, string> = {
 // through in sequential batches so the metadata provider isn't flooded.
 const SUGGESTIONS_PER_REQUEST = 10
 
+const DEFAULT_KIND: Record<string, RatingKind> = {
+  movies: "movie",
+  tv: "series",
+  online_video: "channel",
+}
+
+const MOVIE_RATINGS = ["G", "PG", "PG-13", "R", "NC-17"]
+const TV_RATINGS = ["TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG", "TV-14", "TV-MA"]
+
 const PAGE_SIZES = [25, 50, 100, 200] as const
 const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZE_KEY = "libraryforge.ratings.pageSize"
@@ -90,8 +101,8 @@ function errorMessage(error: unknown, fallback: string) {
 export function LibraryRatingsPage() {
   const { library } = useLibraryOutlet()
 
-  const [kind, setKind] = useState<MetadataMatchKind>(
-    library.content_type === "tv" ? "series" : "movie",
+  const [kind, setKind] = useState<RatingKind>(
+    DEFAULT_KIND[library.content_type] ?? "movie",
   )
   const [status, setStatus] = useState<StatusFilter>("missing")
   const [search, setSearch] = useState("")
@@ -111,7 +122,13 @@ export function LibraryRatingsPage() {
   const [findError, setFindError] = useState<string | null>(null)
   const [attribution, setAttribution] = useState("")
 
-  const [editing, setEditing] = useState<{ kind: MetadataMatchKind; id: string } | null>(null)
+  const [editing, setEditing] = useState<{ kind: MetadataMatchKind; id: string; title: string } | null>(null)
+
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [manualRating, setManualRating] = useState("")
+  const [confirmingManual, setConfirmingManual] = useState(false)
+  const [savingManual, setSavingManual] = useState(false)
+  const [manualMessage, setManualMessage] = useState<string | null>(null)
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) {
@@ -152,7 +169,20 @@ export function LibraryRatingsPage() {
     setFindError(null)
   }, [library.id, kind])
 
-  function changeKind(next: MetadataMatchKind) {
+  // Selection belongs to the page of rows it was made on.
+  useEffect(() => {
+    setSelected(new Set())
+    setConfirmingManual(false)
+  }, [library.id, kind, status, appliedSearch, page, pageSize])
+
+  // Switch to a kind this library actually has (for example a mixed library).
+  useEffect(() => {
+    if (coverage && coverage.kinds.length && !coverage.kinds.some(item => item.kind === kind)) {
+      setKind(coverage.kinds[0].kind)
+    }
+  }, [coverage, kind])
+
+  function changeKind(next: RatingKind) {
     setKind(next)
     setPage(1)
   }
@@ -196,7 +226,7 @@ export function LibraryRatingsPage() {
     try {
       for (let start = 0; start < ids.length; start += SUGGESTIONS_PER_REQUEST) {
         const batch = ids.slice(start, start + SUGGESTIONS_PER_REQUEST)
-        const data = await getRatingSuggestions(library.id, kind, batch)
+        const data = await getRatingSuggestions(library.id, kind as MetadataMatchKind, batch)
 
         if (runRef.current !== run) {
           return
@@ -277,6 +307,50 @@ export function LibraryRatingsPage() {
   }
 
   const counts = coverage?.summary[kind]
+  const kindInfo = coverage?.kinds.find(item => item.kind === kind)
+  const editable = kind === "movie" || kind === "series"
+  const ratingOptions = kind === "movie"
+    ? [...MOVIE_RATINGS, ...TV_RATINGS]
+    : [...TV_RATINGS, ...MOVIE_RATINGS]
+  const allSelected = rows.length > 0 && rows.every(row => selected.has(row.id))
+
+  function toggleRow(id: string) {
+    setConfirmingManual(false)
+    setSelected(current => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setConfirmingManual(false)
+    setSelected(allSelected ? new Set() : new Set(rows.map(row => row.id)))
+  }
+
+  async function saveManualRating() {
+    setSavingManual(true)
+    setManualMessage(null)
+    try {
+      const result = await setLibraryRatings(library.id, kind, Array.from(selected), manualRating)
+      setManualMessage(
+        `${result.rating ? `Set ${result.rating} on` : "Cleared the rating on"} ${result.changed} item${result.changed === 1 ? "" : "s"}`
+        + (result.unchanged ? ` (${result.unchanged} already matched).` : "."),
+      )
+      setSelected(new Set())
+      setConfirmingManual(false)
+      setSuggestions({})
+      void load(true)
+    } catch (error) {
+      setManualMessage(errorMessage(error, "Unable to set the rating."))
+    } finally {
+      setSavingManual(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -290,14 +364,19 @@ export function LibraryRatingsPage() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Item type">
-            <Button variant={kind === "movie" ? "default" : "outline"} onClick={() => changeKind("movie")}>
-              Movies
-            </Button>
-            <Button variant={kind === "series" ? "default" : "outline"} onClick={() => changeKind("series")}>
-              TV series
-            </Button>
-          </div>
+          {coverage && coverage.kinds.length > 0 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Item type">
+              {coverage.kinds.map(item => (
+                <Button
+                  key={item.kind}
+                  variant={kind === item.kind ? "default" : "outline"}
+                  onClick={() => changeKind(item.kind)}
+                >
+                  {item.label} ({item.total})
+                </Button>
+              ))}
+            </div>
+          )}
 
           {counts && (
             <div className="grid gap-3 sm:grid-cols-4">
@@ -322,19 +401,23 @@ export function LibraryRatingsPage() {
         </CardContent>
       </Card>
 
-      <NfoRatingImportCard
-        libraryId={library.id}
-        kind={kind}
-        onImported={() => {
-          setSuggestions({})
-          void load(true)
-        }}
-      />
+      {kindInfo?.nfo && (
+        <>
+          <NfoRatingImportCard
+            libraryId={library.id}
+            kind={kind as MetadataMatchKind}
+            onImported={() => {
+              setSuggestions({})
+              void load(true)
+            }}
+          />
 
-      <NfoRatingExportCard
-        libraryId={library.id}
-        kind={kind}
-      />
+          <NfoRatingExportCard
+            libraryId={library.id}
+            kind={kind as MetadataMatchKind}
+          />
+        </>
+      )}
 
       <Card>
         <CardContent className="space-y-4 pt-6">
@@ -364,6 +447,14 @@ export function LibraryRatingsPage() {
             </form>
           </div>
 
+          {kindInfo && !kindInfo.provider_suggestions && (
+            <p className="text-sm text-muted-foreground">
+              Metadata providers don&apos;t rate online video, so set these ratings by hand: select channels below and
+              choose a rating. In media servers each channel is a TV series, and its videos use the channel&apos;s rating.
+            </p>
+          )}
+
+          {kindInfo?.provider_suggestions && (
           <div className="flex flex-wrap items-center gap-3">
             {finding ? (
               <>
@@ -386,6 +477,54 @@ export function LibraryRatingsPage() {
               suggested rating, and nothing is saved until you apply it.
             </span>
           </div>
+          )}
+
+          {selected.size > 0 && (
+            <div className="space-y-2 rounded-md border p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{selected.size} selected</span>
+                <label className="flex items-center gap-2">
+                  Rating
+                  <select
+                    className={SELECT_CLASS}
+                    value={manualRating}
+                    onChange={event => {
+                      setManualRating(event.target.value)
+                      setConfirmingManual(false)
+                    }}
+                  >
+                    <option value="">Clear rating</option>
+                    {ratingOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                    <option value="NR">NR (not rated)</option>
+                  </select>
+                </label>
+                {!confirmingManual ? (
+                  <Button size="sm" disabled={savingManual} onClick={() => setConfirmingManual(true)}>
+                    {manualRating ? `Set ${manualRating}` : "Clear rating"}
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" disabled={savingManual} onClick={() => void saveManualRating()}>
+                      {savingManual ? "Saving..." : `Confirm for ${selected.size} item${selected.size === 1 ? "" : "s"}`}
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={savingManual} onClick={() => setConfirmingManual(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  Clear selection
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Saved as a manual edit: the rating is locked, so NFO imports and provider suggestions won&apos;t replace it.
+              </p>
+            </div>
+          )}
+
+          {manualMessage && <p className="text-sm" role="status">{manualMessage}</p>}
 
           {findError && <p className="text-sm text-destructive" role="alert">{findError}</p>}
           {loadError && <p className="text-sm text-destructive" role="alert">{loadError}</p>}
@@ -396,6 +535,15 @@ export function LibraryRatingsPage() {
               <table className="w-full text-sm">
                 <thead className="text-left text-xs text-muted-foreground">
                   <tr>
+                    <th className="w-8 py-2 pr-3">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        aria-label="Select all on this page"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                      />
+                    </th>
                     <th className="py-2 pr-3">Title</th>
                     <th className="py-2 pr-3">Year</th>
                     <th className="py-2 pr-3">Rating</th>
@@ -410,14 +558,16 @@ export function LibraryRatingsPage() {
                       row={row}
                       suggestion={suggestions[row.id]}
                       busy={finding}
+                      selected={selected.has(row.id)}
+                      onToggle={() => toggleRow(row.id)}
                       onApply={applySuggestion}
                       onRetry={retrySuggestion}
-                      onOpen={() => setEditing({ kind: row.kind, id: row.id })}
+                      onOpen={editable ? () => setEditing({ kind: row.kind as MetadataMatchKind, id: row.id, title: row.title }) : undefined}
                     />
                   ))}
                   {!rows.length && (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                      <td colSpan={6} className="py-6 text-center text-muted-foreground">
                         {status === "missing" ? "Everything here has a rating." : "Nothing matches this filter."}
                       </td>
                     </tr>
@@ -480,10 +630,30 @@ export function LibraryRatingsPage() {
       </Card>
 
       <CatalogItemEditorDialog
+        key={editing?.id ?? "closed"}
         kind={editing?.kind ?? null}
         id={editing?.id ?? null}
         onClose={() => setEditing(null)}
         onChanged={() => load(true)}
+        initialTab="match"
+        matchOptions={{
+          autoSearch: true,
+          quickRating: true,
+          onRatingSaved: rating => {
+            // Saved: go straight back to the Ratings list.
+            const saved = editing
+            setEditing(null)
+            if (saved) {
+              setSuggestions(current => {
+                const next = { ...current }
+                delete next[saved.id]
+                return next
+              })
+              setManualMessage(`Saved ${rating} for ${saved.title}.`)
+            }
+            void load(true)
+          },
+        }}
       />
     </div>
   )
@@ -494,6 +664,8 @@ function RatingRow({
   row,
   suggestion,
   busy,
+  selected,
+  onToggle,
   onApply,
   onRetry,
   onOpen,
@@ -501,20 +673,35 @@ function RatingRow({
   row: RatingCoverageRow
   suggestion?: SuggestionState
   busy: boolean
+  selected: boolean
+  onToggle: () => void
   onApply: (suggestion: SuggestionState) => void
   onRetry: (id: string) => void
-  onOpen: () => void
+  onOpen?: () => void
 }) {
   return (
     <tr className="border-t align-top">
       <td className="py-2 pr-3">
-        <button
-          type="button"
-          className="text-left font-medium underline-offset-4 hover:underline"
-          onClick={onOpen}
-        >
-          {row.title}
-        </button>
+        <input
+          type="checkbox"
+          className="mt-1 size-4"
+          aria-label={`Select ${row.title}`}
+          checked={selected}
+          onChange={onToggle}
+        />
+      </td>
+      <td className="py-2 pr-3">
+        {onOpen ? (
+          <button
+            type="button"
+            className="text-left font-medium underline-offset-4 hover:underline"
+            onClick={onOpen}
+          >
+            {row.title}
+          </button>
+        ) : (
+          <span className="font-medium">{row.title}</span>
+        )}
       </td>
       <td className="py-2 pr-3">{row.year ?? "—"}</td>
       <td className="py-2 pr-3">
@@ -530,7 +717,7 @@ function RatingRow({
         {row.locked ? " · locked" : ""}
       </td>
       <td className="py-2">
-        <SuggestionCell suggestion={suggestion} busy={busy} onApply={onApply} onRetry={onRetry} onOpen={onOpen} />
+        <SuggestionCell suggestion={suggestion} busy={busy} onApply={onApply} onRetry={onRetry} onOpen={onOpen ?? (() => undefined)} />
       </td>
     </tr>
   )
@@ -592,7 +779,7 @@ function SuggestionCell({
 
       {suggestion.status !== "suggested" && (
         <Button size="sm" variant="outline" onClick={onOpen}>
-          Open
+          Find match
         </Button>
       )}
     </div>

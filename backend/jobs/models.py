@@ -16,6 +16,7 @@ class ScanJob(models.Model):
             "Completed With Errors",
         )
         FAILED = ("failed", "Failed")
+        CANCELLED = ("cancelled", "Cancelled")
 
     id = models.UUIDField(
         primary_key=True,
@@ -67,6 +68,13 @@ class ScanJob(models.Model):
 
     discovery_had_errors = models.BooleanField(default=False)
 
+    # Which ScanWorker claimed this job, so a job whose worker stopped can be
+    # recognized as interrupted instead of looking active forever.
+    worker_id = models.CharField(max_length=128, blank=True, default="")
+
+    # Set by a user; the worker stops at its next progress checkpoint.
+    cancel_requested = models.BooleanField(default=False)
+
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -112,3 +120,32 @@ class ScanJob(models.Model):
             f"{self.library.name}: "
             f"{self.get_status_display()}"
         )
+
+
+
+class ScanWorker(models.Model):
+    """A running scan worker process, kept alive by a heartbeat.
+
+    The web server and the worker are separate processes, so liveness is
+    shared through the database. A worker whose heartbeat is older than
+    ``jobs.services.WORKER_STALE_SECONDS`` is treated as stopped.
+    """
+
+    id = models.CharField(primary_key=True, max_length=128)
+    hostname = models.CharField(max_length=255, blank=True)
+    pid = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField(db_index=True)
+    current_job = models.ForeignKey(
+        ScanJob,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+
+    def __str__(self):
+        return f"{self.hostname}:{self.pid}"

@@ -28,6 +28,7 @@ import type {
   NfoExportPreview,
   NfoImportPreview,
   RatingCoverage,
+  RatingKind,
   RatingSuggestions,
   NfoFile,
   NfoValidation,
@@ -38,6 +39,7 @@ import type {
   ProjectionRunResult,
   RestartRequestResult,
   ScanJob,
+  ScanWorkerStatus,
   SemanticMatch,
   SemanticResetResult,
   SemanticResolveInput,
@@ -378,6 +380,29 @@ export async function getScanJob(
 ) {
   return request<ScanJob>(
     `/api/scan-jobs/${jobId}/`,
+  )
+}
+
+
+// Queued or stalled scans stop immediately; a running scan stops at its
+// worker's next progress checkpoint.
+export async function cancelScanJob(
+  jobId: string,
+) {
+  await ensureCsrf()
+
+  return request<ScanJob>(
+    `/api/scan-jobs/${jobId}/cancel/`,
+    {
+      method: "POST",
+    },
+  )
+}
+
+
+export async function getScanWorkerStatus() {
+  return request<ScanWorkerStatus>(
+    "/api/scan-jobs/worker/",
   )
 }
 
@@ -1371,7 +1396,7 @@ export async function applyMetadataMatch(
 export async function getLibraryRatings(
   libraryId: string,
   params: {
-    kind: MetadataMatchKind
+    kind: RatingKind
     status?: string
     search?: string
     page?: number
@@ -1452,6 +1477,33 @@ export async function writeNfoRatingBatch(
     {
       method: "POST",
       body: JSON.stringify({ kind, cursor, batch }),
+    },
+  )
+}
+
+
+// Set (or clear, with "") the rating on chosen items. Recorded as manual
+// edits, so imports and provider suggestions won't replace them.
+export async function setLibraryRatings(
+  libraryId: string,
+  kind: RatingKind,
+  ids: string[],
+  rating: string,
+) {
+  await ensureCsrf()
+
+  return request<{
+    library_id: string
+    kind: RatingKind
+    rating: string
+    requested: number
+    changed: number
+    unchanged: number
+  }>(
+    `/api/libraries/${libraryId}/ratings/set/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind, ids, rating }),
     },
   )
 }

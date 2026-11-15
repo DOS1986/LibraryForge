@@ -399,6 +399,14 @@ class Channel(models.Model):
         default="",
     )
 
+    # Parental rating for the whole channel (shown as a TV series in media
+    # servers). Videos inherit it unless they have their own.
+    content_rating = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
     source_url = models.TextField(
         blank=True,
         default="",

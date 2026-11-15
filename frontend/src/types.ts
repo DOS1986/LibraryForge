@@ -471,6 +471,7 @@ export type ScanJobStatus =
   | "completed"
   | "completed_with_errors"
   | "failed"
+  | "cancelled"
 
 export interface ScanJob {
   id: string
@@ -478,6 +479,11 @@ export interface ScanJob {
   library_name: string
   status: ScanJobStatus
   status_label: string
+  // Queued, and no scan worker is running to pick it up.
+  waiting_for_worker: boolean
+  // Looks active, but the worker running it has stopped.
+  stalled: boolean
+  cancel_requested: boolean
   total_files: number
   processed_files: number
   total_media_files: number
@@ -1112,6 +1118,17 @@ export interface MetadataMatchApplyResult {
 
 export type RatingStatus = "rated" | "missing" | "unrecognized"
 
+// Online-video channels are rated like TV series.
+export type RatingKind = MetadataMatchKind | "channel"
+
+export interface RatingKindInfo {
+  kind: RatingKind
+  label: string
+  total: number
+  provider_suggestions: boolean
+  nfo: boolean
+}
+
 export interface RatingCounts {
   total: number
   rated: number
@@ -1120,7 +1137,7 @@ export interface RatingCounts {
 }
 
 export interface RatingCoverageRow {
-  kind: MetadataMatchKind
+  kind: RatingKind
   id: string
   title: string
   year: number | null
@@ -1133,10 +1150,11 @@ export interface RatingCoverageRow {
 
 export interface RatingCoverage {
   library_id: string
-  kind: MetadataMatchKind
+  kind: RatingKind
   status: RatingStatus | "all"
-  summary: Record<MetadataMatchKind, RatingCounts>
+  summary: Record<RatingKind, RatingCounts>
   recognized_ratings: { movie: string[]; tv: string[] }
+  kinds: RatingKindInfo[]
   page: number
   page_size: number
   total: number
@@ -1250,4 +1268,20 @@ export interface NfoExportBatch {
   problems: NfoExportProblem[]
   next_cursor: string | null
   remaining: number
+}
+
+
+export interface ScanWorkerStatus {
+  alive: boolean
+  stale_after_seconds: number
+  workers: {
+    id: string
+    hostname: string
+    pid: number
+    started_at: string
+    last_seen_at: string
+    current_job: string | null
+    current_library: string | null
+  }[]
+  queued_jobs: number
 }

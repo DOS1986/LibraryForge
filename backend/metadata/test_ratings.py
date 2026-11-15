@@ -193,3 +193,106 @@ class SuggestionTests(_MatchApiTestCase):
         response = self.suggest([self.movie.id])
         self.assertEqual(response.status_code, 400)
         self.assertIn("No enabled provider connection", response.data["detail"])
+
+
+class _ContentTypeBase(_MatchApiTestCase):
+    def setUp(self):
+        super().setUp()
+        from catalog.models import Channel
+
+        self.youtube = Library.objects.create(owner=self.user, name="Youtube", path="/yt", content_type="online_video")
+        self.bluey = Channel.objects.create(library=self.youtube, provider="youtube", source_id="UC1", title="Bluey")
+        self.news = Channel.objects.create(
+            library=self.youtube, provider="youtube", source_id="UC2", title="News", content_rating="TV-14"
+        )
+        self.mixed = Library.objects.create(owner=self.user, name="Mixed", path="/mixed", content_type="mixed")
+        MediaItem.objects.create(library=self.mixed, title="Cars", media_type=MediaItem.MediaType.MOVIE)
+        Channel.objects.create(library=self.mixed, provider="youtube", source_id="UC3", title="Clips")
+
+    def coverage(self, library, **params):
+        return self.client.get(f"/api/libraries/{library.id}/ratings/", params)
+
+
+class ContentTypeTests(_ContentTypeBase):
+    def test_kinds_follow_library_content(self):
+        kinds = lambda library: [item["kind"] for item in self.coverage(library).data["kinds"]]
+        self.assertEqual(kinds(self.youtube), ["channel"])
+        self.assertEqual(kinds(self.library), ["movie"])
+        self.assertEqual(kinds(self.tv), ["series"])
+        self.assertEqual(kinds(self.mixed), ["movie", "channel"])
+        channel = self.coverage(self.youtube).data["kinds"][0]
+        self.assertFalse(channel["provider_suggestions"])
+        self.assertFalse(channel["nfo"])
+
+    def test_channel_coverage(self):
+        data = self.coverage(self.youtube, kind="channel", status="all").data
+        self.assertEqual(data["summary"]["channel"], {"total": 2, "rated": 1, "missing": 1, "unrecognized": 0})
+        self.assertEqual([row["title"] for row in data["results"]], ["Bluey", "News"])
+        self.assertIsNone(data["results"][0]["year"])
+
+    def test_channels_get_no_provider_suggestions(self):
+        response = self.client.get(
+            f"/api/libraries/{self.youtube.id}/ratings/suggestions/", {"kind": "channel", "ids": str(self.bluey.id)}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("by hand", response.data["detail"])
+        self.request.assert_not_called()
+
+
+class ManualRatingTests(_ContentTypeBase):
+    def set_rating(self, library, kind, ids, rating):
+        return self.client.post(
+            f"/api/libraries/{library.id}/ratings/set/",
+            {"kind": kind, "ids": [str(i) for i in ids], "rating": rating},
+            format="json",
+        )
+
+    def test_set_rating_on_channels_records_a_manual_lock(self):
+        response = self.set_rating(self.youtube, "channel", [self.bluey.id, self.news.id], "tv-y")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data["rating"], response.data["changed"]), ("TV-Y", 2))
+        self.bluey.refresh_from_db()
+        self.assertEqual(self.bluey.content_rating, "TV-Y")
+        state = CanonicalFieldState.objects.get(target_id=self.bluey.id, field_name="content_rating")
+        self.assertEqual((state.target_type, state.source, state.locked), ("channel", "manual", True))
+        change = MetadataChangeSet.objects.get(target_id=self.news.id)
+        self.assertEqual(change.changes, {"content_rating": {"old": "TV-14", "new": "TV-Y"}})
+        again = self.set_rating(self.youtube, "channel", [self.bluey.id], "TV-Y").data
+        self.assertEqual(again["changed"], 0)
+
+    def test_set_and_clear_movie_rating(self):
+        self.assertEqual(self.set_rating(self.library, "movie", [self.movie.id], "PG").data["changed"], 1)
+        self.movie.refresh_from_db()
+        self.assertEqual(self.movie.content_rating, "PG")
+        self.assertEqual(self.set_rating(self.library, "movie", [self.movie.id], "").data["changed"], 1)
+        self.movie.refresh_from_db()
+        self.assertEqual(self.movie.content_rating, "")
+
+    def test_manual_rating_survives_nfo_import(self):
+        from metadata.models import NfoFile
+
+        self.set_rating(self.library, "movie", [self.movie.id], "PG")
+        NfoFile.objects.create(
+            library=self.library, media_item=self.movie, relative_path="m/m.nfo", file_name="m.nfo",
+            root_element="movie", parsed_data={"movie": {"mpaa": "R"}}, parse_status=NfoFile.ParseStatus.OK,
+        )
+        preview = self.client.get(f"/api/libraries/{self.library.id}/ratings/nfo-import/", {"kind": "movie"}).data
+        self.assertEqual(preview["summary"]["locked"], 1)
+
+    def test_validation_and_scope(self):
+        theirs = Library.objects.create(owner=self.other, name="T", path="/t", content_type="online_video")
+        cases = (
+            (self.youtube, "episode", [self.bluey.id], "TV-Y", 400),
+            (self.youtube, "channel", [], "TV-Y", 400),
+            (self.youtube, "channel", ["nope"], "TV-Y", 400),
+            (self.youtube, "channel", [self.bluey.id], "x" * 65, 400),
+            (self.youtube, "channel", [self.bluey.id], None, 400),
+            (self.youtube, "movie", [self.bluey.id], "PG", 404),
+            (self.library, "channel", [self.bluey.id], "PG", 404),
+            (theirs, "channel", [self.bluey.id], "PG", 404),
+        )
+        for library, kind, ids, rating, status in cases:
+            with self.subTest(kind=kind, rating=rating, library=library.name):
+                self.assertEqual(self.set_rating(library, kind, ids, rating).status_code, status)
+        self.bluey.refresh_from_db()
+        self.assertEqual(self.bluey.content_rating, "")
