@@ -80,6 +80,7 @@ from metadata.views import (
 from outputs.views import (
     OutputProfileViewSet,
     ProjectionViewSet,
+    library_youtube_shows_view,
 )
 
 
@@ -324,6 +325,11 @@ urlpatterns = [
         name="library-rating-nfo-import",
     ),
 
+    path(
+        "api/libraries/<uuid:library_id>/youtube-shows/",
+        library_youtube_shows_view,
+        name="library-youtube-shows",
+    ),
     path(
         "api/libraries/<uuid:library_id>/ratings/youtube-hints/",
         library_youtube_rating_hints_view,

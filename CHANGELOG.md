@@ -42,6 +42,7 @@ pre-1.0 development.
 * Added `metadata_id_namespace` to provider definitions so items with a known provider ID are looked up directly.
 * Added a TheTVDB v4 integration for TV series and movies: API key plus optional subscriber PIN, month-long login tokens with automatic renewal, search, English translations, country content ratings (two- or three-letter country codes), remote IMDb/TMDB IDs, and direct lookups by the TVDB ID TMDB provides.
 * Provider HTTP requests can now send a JSON body (used for TheTVDB login).
+* Added a Channels as TV shows Jellyfin folder for online video libraries (Projections tab): each channel becomes a show with tvshow.nfo, poster, and fanart, each upload year a season, and each video a hardlinked, renamed episode (`S2024E051201 - Title [id].mp4`) with its own NFO and embedded thumbnail. Ratings are written into every NFO. Syncs are previewed, applied in batches (all channels or one), keep episode numbers stable, rename, relink, and remove files as the library changes, and only ever change files LibraryForge recorded writing. TubeArchivist's folder is never changed. See `docs/JELLYFIN_YOUTUBE_SHOWS.md`.
 * Added YouTube rating hints for online video channels: the library's YouTube connection reads YouTube's made-for-kids and age-restriction flags for each channel and its most recent videos (up to 250, batched 50 per quota unit), suggests TV-MA for age-restricted content or TV-Y for made-for-kids channels, and applies reviewed hints, recomputed on the server, with provider provenance that never replaces manual ratings.
 * Added a Jellyfin server integration: connection test, linking each library to its Jellyfin library (suggested by folder name), a Refresh in Jellyfin rescan after NFO changes that never replaces existing metadata, and a parental-control check showing each user's maximum rating, unrated blocking, and how many movies, series, and unrated items they can see.
 * Provider HTTP requests can now use bodiless methods such as POST, and empty responses (HTTP 204) return no data.
@@ -67,6 +68,7 @@ pre-1.0 development.
 
 ### Database
 
+* Added migration `outputs.0002_youtube_shows_layout`: a `layout` field on projections and a `ProjectionFile` manifest of files a projection wrote. Additive only.
 * Added migration `integrations.0002_library_link_options`: an `options` field on library integration links. Additive only.
 * Added migration `catalog.0008_channel_content_rating`: a `content_rating` field on channels. Additive only.
 * Added migration `jobs.0004_scan_worker_heartbeat`: a `ScanWorker` heartbeat table, `worker_id` and `cancel_requested` on scan jobs, and a `cancelled` status. Additive only.

@@ -72,6 +72,7 @@ class ProjectionSerializer(
             "output_target",
             "name",
             "destination_path",
+            "layout",
             "link_mode",
             "link_mode_label",
             "naming_template",

@@ -611,6 +611,7 @@ export interface Projection {
   output_target: string
   name: string
   destination_path: string
+  layout: "template" | "youtube_shows"
   link_mode:
     | "symlink"
     | "hardlink"
@@ -621,6 +622,65 @@ export interface Projection {
   last_run_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type ShowsAction = "create" | "update" | "relink" | "replace" | "delete" | "artwork"
+
+export type ShowsResult =
+  | "created"
+  | "updated"
+  | "relinked"
+  | "deleted"
+  | "artwork"
+  | "adopted"
+  | "kept"
+  | "conflict"
+  | "failed"
+
+export interface ShowsPlannedChange {
+  action: ShowsAction
+  kind: string
+  path: string
+  channel_id: string | null
+  channel: string
+}
+
+export interface ShowsPlan {
+  projection_id: string
+  destination_path: string
+  channel: string | null
+  source_error: string | null
+  destination_error: string | null
+  artwork_available: boolean
+  summary: Record<ShowsAction, number>
+  pending: number
+  files: Record<string, number>
+  managed_files: number
+  channels: {
+    id: string
+    title: string
+    folder: string
+    rating: string
+    videos: number
+    pending: number
+  }[]
+  actions: ShowsPlannedChange[]
+  actions_truncated: boolean
+  last_run_at: string | null
+}
+
+export interface ShowsProblem extends ShowsPlannedChange {
+  result: ShowsResult
+  message: string
+}
+
+export interface ShowsSyncBatch {
+  projection_id: string
+  counts: Record<ShowsResult, number>
+  problems: ShowsProblem[]
+  error: string | null
+  next_cursor: string | null
+  remaining: number
 }
 
 export interface ProjectionPreviewItem {

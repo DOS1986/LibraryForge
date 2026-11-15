@@ -50,6 +50,8 @@ import type {
   User,
   UserSettings,
   UserSettingsUpdate,
+  ShowsPlan,
+  ShowsSyncBatch,
   YouTubeHintApplyResult,
   YouTubeRatingHints,
 } from "@/types"
@@ -1079,6 +1081,50 @@ export async function createProjection(
       body: JSON.stringify(
         input
       ),
+    },
+  )
+}
+
+
+// Channels as TV shows: a Jellyfin-ready folder of hardlinked, renamed videos.
+export async function getYouTubeShows(libraryId: string) {
+  return request<Projection[]>(`/api/libraries/${libraryId}/youtube-shows/`)
+}
+
+
+export async function createYouTubeShows(libraryId: string, destinationPath: string) {
+  await ensureCsrf()
+
+  return request<Projection>(
+    `/api/libraries/${libraryId}/youtube-shows/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ destination_path: destinationPath }),
+    },
+  )
+}
+
+
+// What a sync would change; computed from the database only.
+export async function getYouTubeShowsPlan(projectionId: string, channel?: string) {
+  return request<ShowsPlan>(
+    `/api/projections/${projectionId}/shows-plan/` + queryString({ channel: channel || undefined }),
+  )
+}
+
+
+// Applies one batch of the plan, starting after the cursor.
+export async function syncYouTubeShows(
+  projectionId: string,
+  input: { cursor: string | null; batch: number; channel: string | null },
+) {
+  await ensureCsrf()
+
+  return request<ShowsSyncBatch>(
+    `/api/projections/${projectionId}/shows-sync/`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
     },
   )
 }
