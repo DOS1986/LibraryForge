@@ -514,6 +514,8 @@ class TMDbProvider(IntegrationProvider):
                 url = _image_url(item.get("file_path"), TMDB_ARTWORK_IMAGE_SIZE)
                 if not url:
                     continue
+                # Documented TMDB sizes: w342 for posters, w300 for backdrops and logos.
+                thumbnail = _image_url(item.get("file_path"), "w342" if kind == ArtworkKind.POSTER else "w300")
                 language = item.get("iso_639_1")
                 try:
                     output.append(
@@ -523,6 +525,7 @@ class TMDbProvider(IntegrationProvider):
                             width=_positive_int(item.get("width"), 100_000),
                             height=_positive_int(item.get("height"), 100_000),
                             language=language if isinstance(language, str) and language else None,
+                            thumbnail_url=thumbnail,
                         )
                     )
                 except ValueError:
@@ -532,5 +535,6 @@ class TMDbProvider(IntegrationProvider):
             for path_key, kind in (("poster_path", ArtworkKind.POSTER), ("backdrop_path", ArtworkKind.BACKDROP)):
                 url = _image_url(payload.get(path_key), TMDB_ARTWORK_IMAGE_SIZE)
                 if url:
-                    output.append(ProviderArtwork(url=url, kind=kind))
+                    thumbnail = _image_url(payload.get(path_key), "w342" if kind == ArtworkKind.POSTER else "w300")
+                    output.append(ProviderArtwork(url=url, kind=kind, thumbnail_url=thumbnail))
         return output

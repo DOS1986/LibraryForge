@@ -68,6 +68,7 @@ from metadata.rating_views import (
 )
 from metadata.match_views import (
     match_apply_view,
+    match_artwork_view,
     match_context_view,
     match_preview_view,
     match_search_view,
@@ -347,6 +348,11 @@ urlpatterns = [
         name="metadata-match-context",
     ),
 
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/artwork/",
+        match_artwork_view,
+        name="metadata-match-artwork",
+    ),
     path(
         "api/metadata-match/<str:target_type>/<uuid:target_id>/search/",
         match_search_view,

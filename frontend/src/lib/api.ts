@@ -54,20 +54,26 @@ import type {
   ShowsSyncBatch,
   YouTubeHintApplyResult,
   YouTubeRatingHints,
+  ArtworkChoices,
+  ArtworkSaveResult,
 } from "@/types"
 
 
 export class ApiError extends Error {
   status: number
+  // The server's machine-readable reason, when it sent one (for example "existing_artwork").
+  code: string | null
 
   constructor(
     message: string,
     status: number,
+    code: string | null = null,
   ) {
     super(message)
 
     this.name = "ApiError"
     this.status = status
+    this.code = code
   }
 }
 
@@ -234,6 +240,9 @@ async function request<T>(
         ),
       ),
       response.status,
+      data && typeof data === "object" && typeof (data as { code?: unknown }).code === "string"
+        ? (data as { code: string }).code
+        : null,
     )
   }
 
@@ -1418,6 +1427,48 @@ export async function previewMetadataMatch(
 ) {
   return request<MetadataMatchPreview>(
     metadataMatchPath(kind, id, "preview") + queryString(params),
+  )
+}
+
+
+// Artwork a source offers for this title. Never writes anything.
+export async function getMatchArtwork(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    prefer?: string
+    source_id?: string
+    tmdb?: string
+    imdb?: string
+    tvdb?: string
+  },
+) {
+  return request<ArtworkChoices>(metadataMatchPath(kind, id, "artwork") + queryString(params))
+}
+
+
+// Saves one offered image beside the item; the server re-checks it is offered.
+export async function saveMatchArtwork(
+  kind: MetadataMatchKind,
+  id: string,
+  body: {
+    connection: string
+    source_id?: string
+    ids?: Record<string, string>
+    url: string
+    replace?: boolean
+    operation_id: string
+  },
+) {
+  await ensureCsrf()
+
+  return request<ArtworkSaveResult>(
+    metadataMatchPath(kind, id, "artwork"),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   )
 }
 

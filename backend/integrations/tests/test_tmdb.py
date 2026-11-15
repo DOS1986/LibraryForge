@@ -298,11 +298,19 @@ class MovieDetailTests(_TMDbTestCase):
         artwork = [item.to_dict() for item in self.detail.artwork]
         self.assertEqual(
             artwork[0],
-            {"url": "https://image.tmdb.org/t/p/original/poster-en.jpg", "kind": "poster", "width": 2000, "height": 3000, "language": "en"},
+            {
+                "url": "https://image.tmdb.org/t/p/original/poster-en.jpg",
+                "kind": "poster",
+                "width": 2000,
+                "height": 3000,
+                "language": "en",
+                "thumbnail_url": "https://image.tmdb.org/t/p/w342/poster-en.jpg",
+            },
         )
         self.assertIsNone(artwork[1]["language"])
         self.assertEqual([item.kind for item in self.detail.artwork], [ArtworkKind.POSTER, ArtworkKind.POSTER, ArtworkKind.BACKDROP, ArtworkKind.LOGO])
         logo = self.detail.artwork[-1]
+        self.assertTrue(logo.thumbnail_url.startswith("https://image.tmdb.org/t/p/w300/"))
         self.assertIsNone(logo.width)
         self.assertIsNone(logo.height)
         self.assertTrue(all(item.url.startswith("https://image.tmdb.org/") for item in self.detail.artwork))

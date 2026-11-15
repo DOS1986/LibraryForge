@@ -15,6 +15,7 @@ from rest_framework.throttling import UserRateThrottle
 
 from metadata.providers.types import MetadataProviderError
 from metadata.services.provider_apply import ApplyConflict, apply_preview
+from metadata.services.provider_artwork import artwork_choices, save_artwork
 from metadata.services.provider_match import (
     ERROR_STATUS,
     MatchRequestError,
@@ -130,3 +131,39 @@ def match_apply_view(request, target_type, target_id):
             request=dict(serializer.validated_data),
         )
     )
+
+
+class ArtworkSaveSerializer(serializers.Serializer):
+    """Which offered image to save; the server re-checks it is offered."""
+
+    connection = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    source_id = serializers.CharField(required=False, allow_blank=True, max_length=128, trim_whitespace=True)
+    ids = serializers.DictField(child=serializers.CharField(max_length=64, allow_blank=True), required=False)
+    url = serializers.URLField(max_length=2048)
+    replace = serializers.BooleanField(required=False, default=False)
+    operation_id = serializers.UUIDField()
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([MetadataProviderThrottle])
+def match_artwork_view(request, target_type, target_id):
+    """GET lists artwork a source offers for this title (``connection``, and
+    ``source_id`` or ``tmdb``/``imdb``/``tvdb``); POST saves one image beside
+    the item, keeping what it replaces."""
+
+    resolved = resolve_target(user=request.user, target_type=target_type, target_id=target_id)
+    if request.method == "GET":
+        params = request.query_params
+        return _run(
+            lambda: artwork_choices(
+                resolved,
+                connection_id=params.get("connection") or None,
+                source_id=params.get("source_id") or None,
+                ids={key: params.get(key) for key in ("tmdb", "imdb", "tvdb") if params.get(key)},
+                prefer_id=params.get("prefer") or None,
+            )
+        )
+    serializer = ArtworkSaveSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    return _run(lambda: save_artwork(user=request.user, resolved=resolved, request=dict(serializer.validated_data)))

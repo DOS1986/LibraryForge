@@ -7,6 +7,7 @@ from integrations.providers.base import (
     IntegrationProvider,
     provider_supports_metadata_target,
 )
+from integrations.providers.fanart import FanartProvider
 from integrations.providers.jellyfin import JellyfinProvider
 from integrations.providers.omdb import OMDbProvider
 from integrations.providers.tmdb import TMDbProvider
@@ -22,6 +23,7 @@ PROVIDERS: dict[str, type[IntegrationProvider]] = {
     OMDbProvider.definition.key: OMDbProvider,
     TheTVDBProvider.definition.key: TheTVDBProvider,
     JellyfinProvider.definition.key: JellyfinProvider,
+    FanartProvider.definition.key: FanartProvider,
 }
 
 

@@ -271,6 +271,19 @@ export function SystemStatusPage() {
           <p className="text-muted-foreground">
             Metadata provided by TheTVDB. Please consider adding missing information or subscribing.
           </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://fanart.tv/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Fanart.tv
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Artwork from fanart.tv, contributed by its community.
+          </p>
         </CardContent>
       </Card>
     </div>

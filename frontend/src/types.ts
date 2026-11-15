@@ -1130,10 +1130,50 @@ export interface RatingEstimate {
 
 export interface MetadataPreviewArtwork {
   url: string
-  kind: "poster" | "backdrop" | "logo" | "thumbnail" | "other"
+  kind: "poster" | "backdrop" | "logo" | "banner" | "thumbnail" | "other"
   width: number | null
   height: number | null
   language: string | null
+  thumbnail_url: string
+}
+
+export type ArtworkTypeKey = "primary" | "backdrop" | "logo" | "banner" | "thumb"
+
+export interface ArtworkSource {
+  connection_id: string
+  connection_name: string
+  provider: string
+  provider_label: string
+  // "details": comes with a matched title; "ids": looked up by TMDB/IMDb/TVDB ID.
+  mode: "details" | "ids"
+  id_namespaces: string[]
+  attribution: string
+}
+
+export interface ArtworkChoice extends MetadataPreviewArtwork {
+  artwork_type: ArtworkTypeKey
+  file_name: string
+}
+
+export interface ArtworkChoices {
+  target: MetadataMatchTarget
+  sources: ArtworkSource[]
+  connection: ArtworkSource | null
+  writable: boolean
+  root_error: string | null
+  folder: string | null
+  folder_error: string | null
+  current: Record<ArtworkTypeKey, CatalogEditorArtwork | null>
+  items: ArtworkChoice[]
+}
+
+export interface ArtworkSaveResult {
+  replayed: boolean
+  artwork_type: ArtworkTypeKey
+  path: string
+  backups: { from: string; to: string }[]
+  artwork: CatalogEditorArtwork | null
+  change_set_id: string
 }
 
 export interface MetadataMatchPreview {

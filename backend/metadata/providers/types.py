@@ -318,6 +318,7 @@ class ArtworkKind(StrEnum):
     POSTER = "poster"
     BACKDROP = "backdrop"
     LOGO = "logo"
+    BANNER = "banner"
     THUMBNAIL = "thumbnail"
     OTHER = "other"
 
@@ -336,12 +337,15 @@ class ProviderArtwork:
     width: int | None = None
     height: int | None = None
     language: str | None = None
+    # A smaller copy for showing choices; the full-size ``url`` is what's saved.
+    thumbnail_url: str = ""
 
     def __post_init__(self) -> None:
         url = _clean_url(self.url, name="Artwork URL")
         if not url:
             raise ValueError("Artwork URL is required.")
         object.__setattr__(self, "url", url)
+        object.__setattr__(self, "thumbnail_url", _clean_url(self.thumbnail_url, name="Artwork thumbnail URL"))
         object.__setattr__(self, "kind", ArtworkKind(self.kind))
         _optional_int(self.width, name="Artwork width", minimum=1, maximum=MAX_IMAGE_DIMENSION)
         _optional_int(self.height, name="Artwork height", minimum=1, maximum=MAX_IMAGE_DIMENSION)
@@ -354,6 +358,7 @@ class ProviderArtwork:
             "width": self.width,
             "height": self.height,
             "language": self.language,
+            "thumbnail_url": self.thumbnail_url or self.url,
         }
 
 

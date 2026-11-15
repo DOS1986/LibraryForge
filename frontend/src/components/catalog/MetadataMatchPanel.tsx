@@ -21,6 +21,8 @@ import {
 
 import { newOperationId } from "@/lib/ids"
 
+import { ProviderArtworkPicker } from "@/components/catalog/ProviderArtworkPicker"
+
 import type {
   CatalogEditorDetail,
   MetadataMatchApplyResult,
@@ -820,12 +822,7 @@ export function MetadataMatchPanel({
             </section>
           )}
 
-          {preview.provider_metadata.artwork.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {preview.provider_metadata.artwork.length} artwork images are available from{" "}
-              {preview.connection.provider_label}. Choosing artwork comes in a later step.
-            </p>
-          )}
+          <ProviderArtworkPicker kind={kind} id={id} preview={preview} />
 
           <section className="space-y-2 rounded-md border p-3 text-sm">
             <h3 className="font-semibold">Your choices ({selectedRows.length})</h3>

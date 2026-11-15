@@ -288,6 +288,32 @@ The TheTVDB adapter (`integrations/providers/tvdb.py`) uses TheTVDB's v4 API. It
 - **Errors.** 401 means a rejected key or PIN (after one token renewal); 400 and 404 mean not found (an empty search); 429 means rate limited; 5xx and timeouts get one retry.
 - **Terms.** TheTVDB requires attribution with a direct link to TheTVDB.com, shown in the provider description, with its data, and on **System → Credits**. Personal and small projects are free; user-supported keys need TheTVDB's subscription PIN. No caching limits are stated; LibraryForge keeps short-lived caches (search 15 minutes, details 1 hour).
 
+### Fanart.tv
+
+Capabilities: `artwork`.
+Looks up: movies by TMDB or IMDb ID, series by TheTVDB ID.
+Credential mode: `user`.
+
+The Fanart.tv adapter (`integrations/providers/fanart.py`) offers community posters, backgrounds, logos, banners, and thumbs. Fanart.tv has no search, so it supplies artwork for a title another provider matched: the Match tab passes the match's TMDB, IMDb, or TheTVDB ID, and the item's own stored IDs are used as well.
+
+- **API.** `https://webservice.fanart.tv/v3.2/movies/<id>` and `/tv/<id>`, with the project key as `api_key` and an optional personal key as `client_key`. These details are verified against the official Jellyfin Fanart.tv plugin's source; Fanart.tv's own documentation refused automated access, so responses are parsed defensively. Disc art, clear art, and season images aren't offered. Images are ranked English (or no language) first, then by likes, up to 30 per type. Thumbnails shown while choosing use Fanart.tv's `/bigpreview/` copies.
+- **Errors and cache.** 401 or 403 means a rejected key; 404 means no artwork; 429 means rate limited. Responses are cached for an hour per key.
+- **Terms.** Attribution is shown with its artwork and on **System → Credits**. Fanart.tv's terms of use weren't verifiable automatically; check them before relying on the service beyond personal use.
+
+## Provider artwork (alpha.5)
+
+The Match tab's **Artwork** section lists what a source offers for the title being matched, by type (poster, backdrop, logo, banner, thumb), next to the artwork currently selected. Sources are the matched connection when it's TMDB or TheTVDB (artwork comes with the title's details), and any Fanart.tv connection assigned to the library with the `artwork` capability. OMDb posters are patron-only under OMDb's terms, so OMDb is never an artwork source.
+
+`GET /api/metadata-match/<movie|series>/<id>/artwork/` lists choices (`connection` or `prefer`, plus `source_id` or `tmdb`/`imdb`/`tvdb`). It never writes. `POST` with `{"connection", "source_id" or "ids", "url", "replace", "operation_id"}` saves one image:
+
+1. **Only offered images.** The server lists the source's artwork again and refuses a URL it doesn't offer (`409`, `not_offered`), so a request can't make LibraryForge fetch arbitrary addresses.
+2. **Hardened download.** HTTPS only, from that provider's own image host (`image.tmdb.org`, `artworks.thetvdb.com`, `fanart.tv`), at most 25 MB, through the existing remote-artwork fetcher. The bytes must be a real JPEG, PNG, or WebP image between 16 and 12,000 pixels on each side.
+3. **Jellyfin's names.** The image is saved in the item's own folder as `poster`, `fanart`, `logo`, `banner`, or `landscape`, with its real extension. These are names Jellyfin reads and LibraryForge's artwork scan classifies to the same item, which is checked before writing. A movie must have a folder of its own; a series uses the folder its episodes or season folders are in.
+4. **Nothing is lost.** Images of the same type already in the folder that LibraryForge didn't save are only replaced after confirmation (`409`, `existing_artwork`, until `replace` is true). They're renamed to `<name>.libraryforge-backup-<time>.<ext>`, which neither Jellyfin nor the scan treats as artwork. A file LibraryForge saved earlier is replaced without a backup if it's unchanged; if it was edited, it's treated as yours. Season images in a series folder (`season01-poster.jpg`) are never touched.
+5. **Recorded.** The new file is added to the artwork catalog and selected. Provider provenance is stored as the `artwork_<type>` field state (provider, URL, path, SHA-256), with a history entry and the backups made. A repeated `operation_id` returns the first result. If anything fails, the folder is put back as it was.
+
+Read Only libraries can browse artwork but not save it. After saving, refresh the library in Jellyfin so it reads the new images.
+
 ### Jellyfin
 
 Capabilities: `output`.
@@ -314,7 +340,7 @@ Application/project credentials used by future `application` or `hybrid` provide
 
 The provider registry is intentionally extensible. Planned later milestones can register adapters without redesigning the settings model:
 
-- alpha.5 and later: Fanart.tv and other metadata/artwork providers (TMDB, OMDb, and TheTVDB are implemented).
+- Later: other metadata and artwork providers (TMDB, OMDb, TheTVDB, and Fanart.tv are implemented).
 - alpha.6: Emby, Kodi and other output/server integrations (Jellyfin rescans and parental checks are implemented).
 
 Only implemented providers should appear in the UI.
