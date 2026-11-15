@@ -232,7 +232,13 @@ export function LibraryRatingsPage() {
           return
         }
 
-        setAttribution(data.connection.attribution)
+        setAttribution(
+          Array.from(new Set(
+            (data.connections ?? [data.connection])
+              .map(item => item.attribution)
+              .filter(Boolean),
+          )).join(" "),
+        )
         setSuggestions(current => {
           const next = { ...current }
 
@@ -749,11 +755,18 @@ function SuggestionCell({
 
   return (
     <div className="space-y-1">
-      {suggestion.status === "suggested" && (
+      {(suggestion.status === "suggested" || suggestion.status === "estimated") && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{suggestion.rating}</span>
+          {suggestion.provider_label && (
+            <span className="text-xs text-muted-foreground">via {suggestion.provider_label}</span>
+          )}
           <Button size="sm" disabled={suggestion.applying} onClick={() => onApply(suggestion)}>
-            {suggestion.applying ? "Applying..." : `Apply ${suggestion.rating}`}
+            {suggestion.applying
+              ? "Applying..."
+              : suggestion.status === "estimated"
+                ? `Apply estimated ${suggestion.rating}`
+                : `Apply ${suggestion.rating}`}
           </Button>
         </div>
       )}
@@ -766,6 +779,10 @@ function SuggestionCell({
 
       {suggestion.message && (
         <div className="text-xs text-muted-foreground">{suggestion.message}</div>
+      )}
+
+      {suggestion.status !== "suggested" && (suggestion.tried?.length ?? 0) > 1 && (
+        <div className="text-xs text-muted-foreground">Checked: {suggestion.tried?.join(", ")}</div>
       )}
 
       {suggestion.error && (

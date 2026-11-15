@@ -294,6 +294,18 @@ class PreviewTests(_MatchApiTestCase):
         self.assertEqual(rows["external_ids.imdb"]["status"], "conflict")
         self.assertFalse(rows["external_ids.imdb"]["selectable"])
 
+    def test_missing_us_rating_is_estimated_but_not_preselected(self):
+        self.request.return_value = {**MOVIE_DETAIL, "release_dates": {"results": [
+            {"iso_3166_1": "GB", "release_dates": [{"certification": "PG", "type": 3}]},
+        ]}}
+        _, rows = self.preview()
+        row = rows["content_rating"]
+        self.assertEqual((row["proposed"], row["status"]), ("PG", "fill"))
+        self.assertTrue(row["estimated"])
+        self.assertTrue(row["selectable"])
+        self.assertFalse(row["default_selected"])
+        self.assertIn("GB PG", row["note"])
+
     def test_territory_selection(self):
         self.request.return_value = MOVIE_DETAIL
         _, rows = self.preview(territory="gb")

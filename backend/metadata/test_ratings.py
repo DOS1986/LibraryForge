@@ -144,11 +144,37 @@ class SuggestionTests(_MatchApiTestCase):
         self.assertEqual(suggestion["status"], "needs_review")
         self.assertNotIn("apply", suggestion)
 
-    def test_no_rating_in_territory(self):
-        self.detail = {**MOVIE_DETAIL, "release_dates": {"results": [{"iso_3166_1": "GB", "release_dates": [{"certification": "15", "type": 3}]}]}}
+    def test_other_countries_give_an_estimated_us_rating(self):
+        self.detail = {**MOVIE_DETAIL, "release_dates": {"results": [
+            {"iso_3166_1": "GB", "release_dates": [{"certification": "15", "type": 3}]},
+            {"iso_3166_1": "DE", "release_dates": [{"certification": "16", "type": 3}]},
+            {"iso_3166_1": "FR", "release_dates": [{"certification": "12", "type": 3}]},
+        ]}}
+        suggestion = self.suggest([self.movie.id]).data["results"][0]
+        self.assertEqual(suggestion["status"], "estimated")
+        self.assertEqual(suggestion["rating"], "R")
+        self.assertIn("GB 15", suggestion["message"])
+        self.assertEqual(suggestion["estimate"]["age"], 15)
+        self.assertEqual(suggestion["apply"]["fields"], ["content_rating"])
+
+        apply = self.client.post(
+            f"/api/metadata-match/movie/{self.movie.id}/apply/",
+            {**suggestion["apply"], "operation_id": str(uuid.uuid4())},
+            format="json",
+        )
+        self.assertEqual(apply.status_code, 200, apply.data)
+        self.movie.refresh_from_db()
+        self.assertEqual(self.movie.content_rating, "R")
+        change = MetadataChangeSet.objects.get(target_id=self.movie.id)
+        self.assertEqual(change.details["estimated_fields"], ["content_rating"])
+        self.assertIn("estimated", change.note)
+
+    def test_unknown_foreign_ratings_give_no_estimate(self):
+        self.detail = {**MOVIE_DETAIL, "release_dates": {"results": [
+            {"iso_3166_1": "ZZ", "release_dates": [{"certification": "Banned", "type": 3}]},
+        ]}}
         suggestion = self.suggest([self.movie.id]).data["results"][0]
         self.assertEqual(suggestion["status"], "no_rating")
-        self.assertIn("GB 15", suggestion["message"])
         self.assertNotIn("apply", suggestion)
 
     def test_manually_locked_rating_is_respected(self):

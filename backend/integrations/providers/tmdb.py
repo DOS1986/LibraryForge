@@ -158,6 +158,7 @@ class TMDbProvider(IntegrationProvider):
         ),
         metadata_target_types=(MetadataTargetType.MOVIE.value, MetadataTargetType.SERIES.value),
         attribution=TMDB_ATTRIBUTION,
+        metadata_id_namespace="tmdb",
     )
 
     # ------------------------------------------------------------------

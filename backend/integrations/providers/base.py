@@ -71,6 +71,9 @@ class ProviderDefinition:
     metadata_target_types: tuple[str, ...] = ()
     # Notice the provider's terms require wherever its data is shown.
     attribution: str = ""
+    # External-ID namespace of this provider's source IDs ("tmdb", "imdb"), so
+    # an item that already has that ID can be looked up directly.
+    metadata_id_namespace: str = ""
 
 
 MAX_METADATA_QUERY_LENGTH = 200

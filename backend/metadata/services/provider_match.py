@@ -28,6 +28,7 @@ from metadata.providers.types import (
     ProviderMetadata,
 )
 from metadata.services.matching import MatchTarget, match_hint
+from metadata.services.rating_equivalents import estimate_us_rating
 
 SEARCH_PAGE_SIZE = 20
 DEFAULT_TERRITORY = "US"
@@ -583,22 +584,40 @@ def build_preview(
     ratings = [item.to_dict() for item in detail.content_ratings]
     rating = next((item.value for item in detail.content_ratings if item.territory == territory_code), None)
     others = ", ".join(f"{item.territory} {item.value}" for item in detail.content_ratings if item.territory != territory_code)
-    builder.scalar(
+
+    # Without a US rating, estimate one from other countries' ratings. It is
+    # offered for review but never pre-selected.
+    estimate = None
+    if not rating and territory_code == "US":
+        estimate = estimate_us_rating(
+            [(item.territory, item.value) for item in detail.content_ratings],
+            tv=resolved.kind != MetadataTargetType.MOVIE,
+        )
+
+    rating_row = builder.scalar(
         "content_rating",
         "Content rating",
         "descriptive",
-        rating,
+        rating or (estimate.value if estimate else None),
         kind="rating",
         territory=territory_code,
         options=ratings,
+        estimated=estimate is not None,
+        estimate=estimate.to_dict() if estimate else None,
         note=(
             f"{territory_code} rating."
             if rating
+            else f"No {territory_code} rating. {estimate.describe()} Check it before saving."
+            if estimate
             else f"No {territory_code} rating. Other countries: {others}."
             if others
             else ""
         ),
     )
+    if estimate is not None:
+        rating_row["default_selected"] = False
+        if rating_row["status"] == STATUS_LOCKED:
+            rating_row["note"] = "Locked by a manual edit. " + estimate.describe()
 
     builder.collection("genres", "Genres", detail.genres)
     builder.collection("studios", "Studios", detail.studios)

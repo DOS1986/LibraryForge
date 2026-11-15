@@ -244,6 +244,20 @@ export function SystemStatusPage() {
             This product uses TMDB and the TMDB APIs but is not endorsed,
             certified, or otherwise approved by TMDB.
           </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://www.omdbapi.com/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              OMDb API
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Data from the OMDb API (omdbapi.com), licensed CC BY-NC 4.0. OMDb is not
+            endorsed by or affiliated with IMDb.com.
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -238,10 +238,13 @@ function PreviewRow({
         <label htmlFor={inputId} className="font-medium">
           {row.label}
         </label>
-        <div>
+        <div className="flex flex-wrap gap-1">
           <Badge variant={row.status === "conflict" ? "destructive" : "secondary"}>
             {STATUS_LABELS[row.status]}
           </Badge>
+          {row.estimated && (
+            <Badge variant="outline">Estimated</Badge>
+          )}
         </div>
         {row.current_source && (
           <div className="text-xs text-muted-foreground">
@@ -309,6 +312,7 @@ export function MetadataMatchPanel({
 
   const [quickSaving, setQuickSaving] = useState<string | null>(null)
   const [quickResults, setQuickResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+  const [quickEstimates, setQuickEstimates] = useState<Record<string, { rating: string; preview: MetadataMatchPreview }>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -447,7 +451,7 @@ export function MetadataMatchPanel({
     })
   }
 
-  async function saveRatingFrom(candidate: MetadataMatchCandidate) {
+  async function saveRatingFrom(candidate: MetadataMatchCandidate, acceptEstimate = false) {
     setQuickSaving(candidate.source_id)
     setQuickResults(current => {
       const next = { ...current }
@@ -462,11 +466,23 @@ export function MetadataMatchPanel({
     try {
       // The server rebuilds and re-checks this preview when applying; only
       // the rating field is sent.
-      const data = await previewMetadataMatch(kind, id, {
-        connection: connectionId,
-        source_id: candidate.source_id,
-      })
+      const data = acceptEstimate && quickEstimates[candidate.source_id]
+        ? quickEstimates[candidate.source_id].preview
+        : await previewMetadataMatch(kind, id, {
+          connection: connectionId,
+          source_id: candidate.source_id,
+        })
       const row = data.fields.find(item => item.field === "content_rating")
+
+      if (row?.selectable && row.estimated && !acceptEstimate) {
+        // Never save an estimate without a separate, explicit click.
+        setQuickEstimates(current => ({
+          ...current,
+          [candidate.source_id]: { rating: String(row.proposed), preview: data },
+        }))
+        report(false, row.note)
+        return
+      }
 
       if (!row || !row.selectable) {
         report(
@@ -489,7 +505,12 @@ export function MetadataMatchPanel({
       })
 
       const rating = String(row.proposed)
-      report(true, `Saved ${rating}.`)
+      setQuickEstimates(current => {
+        const next = { ...current }
+        delete next[candidate.source_id]
+        return next
+      })
+      report(true, row.estimated ? `Saved estimated ${rating}.` : `Saved ${rating}.`)
       onApplied?.(result.detail)
       onRatingSaved?.(rating, result.detail)
     } catch (error) {
@@ -683,6 +704,16 @@ export function MetadataMatchPanel({
                         >
                           {quickSaving === candidate.source_id ? "Saving..." : "Save rating from this match"}
                         </Button>
+                        {quickEstimates[candidate.source_id] && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={quickSaving !== null}
+                            onClick={() => void saveRatingFrom(candidate, true)}
+                          >
+                            Save estimated {quickEstimates[candidate.source_id].rating}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"

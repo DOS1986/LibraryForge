@@ -7,6 +7,7 @@ from integrations.providers.base import (
     IntegrationProvider,
     provider_supports_metadata_target,
 )
+from integrations.providers.omdb import OMDbProvider
 from integrations.providers.tmdb import TMDbProvider
 from integrations.providers.tubearchivist import TubeArchivistProvider
 from integrations.providers.youtube import YouTubeProvider
@@ -16,6 +17,7 @@ PROVIDERS: dict[str, type[IntegrationProvider]] = {
     YouTubeProvider.definition.key: YouTubeProvider,
     TubeArchivistProvider.definition.key: TubeArchivistProvider,
     TMDbProvider.definition.key: TMDbProvider,
+    OMDbProvider.definition.key: OMDbProvider,
 }
 
 
@@ -65,6 +67,7 @@ def provider_catalog() -> list[dict]:
                 "credential_summary": definition.credential_summary,
                 "metadata_target_types": list(definition.metadata_target_types),
                 "attribution": definition.attribution,
+                "metadata_id_namespace": definition.metadata_id_namespace,
                 "fields": [
                     {
                         "name": field.name,

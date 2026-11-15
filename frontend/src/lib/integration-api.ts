@@ -30,6 +30,7 @@ export interface IntegrationProviderDefinition {
   credential_summary: string
   metadata_target_types: MetadataTargetType[]
   attribution: string
+  metadata_id_namespace: string
   fields: IntegrationFieldDefinition[]
 }
 

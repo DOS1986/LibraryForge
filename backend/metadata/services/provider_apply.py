@@ -239,7 +239,14 @@ def apply_preview(*, user, target_type: str, target_id, request: dict[str, Any])
                 source_ref=source_ref,
                 operation_id=request["operation_id"],
                 changes=changes,
-                note=f"Applied from {connection['provider_label']} ({preview['source_id']}).",
+                note=(
+                    f"Applied from {connection['provider_label']} ({preview['source_id']})."
+                    + (
+                        " The content rating was estimated from other countries' ratings."
+                        if "content_rating" in changes and rows.get("content_rating", {}).get("estimated")
+                        else ""
+                    )
+                ),
                 changed_by=user,
                 details={
                     "provider": connection["provider"],
@@ -252,6 +259,7 @@ def apply_preview(*, user, target_type: str, target_id, request: dict[str, Any])
                     "resolved_territory": preview["territory"],
                     "retrieved_at": retrieved_at.isoformat(),
                     "requested_fields": requested,
+                    "estimated_fields": sorted(name for name in fields if rows[name].get("estimated")),
                     "applied_fields": sorted(changes),
                     "target_revision": request["target_revision"],
                     "provider_snapshot": request["provider_snapshot"],

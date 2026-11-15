@@ -116,7 +116,23 @@ Endpoints (GET only, owner-scoped; neither changes catalog data):
 
 The Ratings tab's **Find ratings** button covers every unrated item on the current page (25, 50, 100, or 200 per page) by sending these requests in sequential batches of 10, with progress and a Stop button. Each batch counts once against the metadata provider rate limit, as does each Apply; raise `LIBRARYFORGE_METADATA_PROVIDER_RATE` if you work through large pages quickly.
 
+**Several providers.** With more than one movie/TV provider assigned to a library (for example TMDB and OMDb), suggestions try them in the library's priority order (Library Settings → Integrations) unless a `connection` is given. A real rating from any provider wins and ends the chain. Otherwise the most useful fallback is kept: an estimate, then "no rating", then "needs review". Providers declare the external-ID namespace of their source IDs (`metadata_id_namespace`: `tmdb`, `imdb`). An item that already has that ID, or that an earlier provider's match revealed (TMDB's details include the IMDb ID), is looked up directly instead of searched by title. Each result says which provider it came from and which were tried.
+
 A suggested rating is saved only when the person clicks **Apply** for that item. That call goes through the metadata-match apply endpoint, so the stale-review checks, provenance, history, scan protection, and duplicate-submission handling all apply. Items that need review can be opened in the catalog editor's Match tab from the list. Suggestions share the metadata provider rate limit.
+
+### Estimated US ratings
+
+When the provider has no US rating for a title but has other countries' ratings, the preview and rating suggestions offer an **estimated** US rating (`metadata/services/rating_equivalents.py`):
+
+1. Each country's rating is converted to the minimum age it implies, using tables for about 20 systems (UK, Ireland, Canada, Australia, New Zealand, Germany, Austria, Switzerland, France, the Netherlands, Belgium, Spain, Portugal, Italy, Brazil, Mexico, the Nordic countries, Japan, Korea, India). Plain age values such as `12`, `16+`, or `FSK 12` are read in any system; unknown values are ignored.
+2. The upper middle of those ages is taken (the median, rounding toward the stricter side), so a single unusual country doesn't decide the result.
+3. That age maps to the US scale:
+   - movies: G (0), PG (up to 9), PG-13 (10–14), R (15+)
+   - TV: TV-G (0), TV-PG (up to 9), TV-14 (10–14), TV-MA (15+)
+
+   TV-Y and TV-Y7 mean *made for children*, which an age can't tell, so they are never estimated.
+
+Estimated rows are marked `estimated` with the `estimate` basis, are never pre-selected, and are saved only by an explicit action (**Apply estimated …** on the Ratings tab, or **Save estimated …** in the Match tab). The change set records them under `details.estimated_fields`, and its note says the rating was estimated. Estimates are only made for the US territory.
 
 ### Setting ratings by hand
 
@@ -207,6 +223,28 @@ The TMDB adapter (`integrations/providers/tmdb.py`) searches The Movie Database 
 - **Errors and retries.** HTTP 401/403 → `invalid_credentials`, 404 (and TMDB's HTTP-200 not-found codes) → `not_found`, 429 → `rate_limited` (with `retry_after_seconds` when TMDB sends `Retry-After`), 5xx → `unavailable`, timeouts → `timeout`, unreadable bodies → `malformed_response`. Retryable failures get at most one inline retry after a short jittered wait, or after `Retry-After` if it is 2 seconds or less. Credential and validation failures are never retried.
 - **Caching.** Successful responses are cached briefly in the Django cache (search 15 minutes, details 1 hour), scoped to a hash of the credential so different connections never share results. TMDB's terms forbid caching for longer than 6 months.
 - **Terms and attribution.** TMDB's API terms apply to each installation's use, including their non-commercial license. LibraryForge shows TMDB's required notice in the provider description and on **System → Credits**: "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."
+
+### OMDb
+
+Capabilities: `metadata`.
+Metadata targets: `movie`, `series`.
+ID namespace: `imdb`.
+Credential mode: `user`.
+
+The OMDb adapter (`integrations/providers/omdb.py`) uses the Open Movie Database, which serves IMDb-derived data, including the US certification (`Rated`) for most movies and many series. It is mainly a second source of real US ratings where TMDB has none.
+
+- **Credential.** Each installation supplies its own OMDb API key (omdbapi.com; free keys allow 1,000 requests a day). OMDb only accepts the key as an `apikey` query parameter, so LibraryForge never logs or displays request URLs. The connection test looks up one well-known IMDb ID.
+- **Search and details.** Search uses `s` with `type` and `y` (pages 1 to 100). OMDb's "not found" answer is a successful empty search. Details use `i=<IMDb ID>&plot=full`, and the record's `Type` must match the target, so a series ID is never applied to a movie.
+- **Field mapping.**
+  - `Rated` becomes the US content rating.
+  - `Released` becomes the release date, unless it disagrees with `Year` (a later regional or re-release date), in which case only the year is kept.
+  - A series' `Year` range (`2008–2013`) gives its end year; an open range (`2019–`) means still running.
+  - `Runtime` gives minutes, `Genre` the genres, and `Production` the studio when present.
+  - `Poster` is kept only as an https reference.
+  - `N/A` means missing.
+  - IMDb scores are never treated as ratings.
+- **Errors.** OMDb error messages are classified by their wording: not found, invalid API key, request limit reached, and too many results. HTTP 401 is reported as a rejected key or an exhausted daily limit. Rate limits are not retried, because they reset daily; other transient errors get one retry.
+- **Terms.** OMDb content is CC BY-NC 4.0, and its Terms of Use allow personal, non-commercial use and restrict archiving. LibraryForge keeps only short-lived caches (search 15 minutes, details 1 hour, scoped to the key); ratings a person saves stay in their own catalog. The Poster API is patron-only, so posters are never downloaded. Attribution appears in the provider description, with its data, and on **System → Credits**.
 
 ## Secrets
 

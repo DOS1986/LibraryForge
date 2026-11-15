@@ -1057,6 +1057,15 @@ export interface MetadataPreviewField {
   linked_to?: string
   territory?: string
   namespace?: string
+  // True when the proposed rating was estimated from other countries' ratings.
+  estimated?: boolean
+  estimate?: RatingEstimate | null
+}
+
+export interface RatingEstimate {
+  value: string
+  age: number
+  basis: { territory: string; rating: string; age: number }[]
 }
 
 export interface MetadataPreviewArtwork {
@@ -1164,6 +1173,7 @@ export interface RatingCoverage {
 
 export type RatingSuggestionStatus =
   | "suggested"
+  | "estimated"
   | "needs_review"
   | "no_rating"
   | "locked"
@@ -1181,6 +1191,11 @@ export interface RatingSuggestion {
   candidate?: MetadataMatchCandidate | null
   rating?: string | null
   territory?: string
+  estimate?: RatingEstimate | null
+  // Which provider this result came from, and which were tried in order.
+  provider?: string
+  provider_label?: string
+  tried?: string[]
   apply?: Omit<MetadataMatchApplyRequest, "operation_id">
 }
 
@@ -1188,6 +1203,7 @@ export interface RatingSuggestions {
   library_id: string
   kind: MetadataMatchKind
   connection: MetadataMatchConnection
+  connections?: MetadataMatchConnection[]
   results: RatingSuggestion[]
 }
 

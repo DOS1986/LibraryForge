@@ -18,13 +18,19 @@ from django.shortcuts import get_object_or_404
 
 from catalog.models import CanonicalFieldState, Channel, Series
 from catalog.services.canonical import _record_manual_changes
+from integrations.registry import get_provider_class
 from libraries.models import Library
 from media.models import MediaItem
-from metadata.providers.types import MetadataProviderError, MetadataTargetType
+from metadata.providers.types import (
+    MetadataErrorCategory,
+    MetadataProviderError,
+    MetadataTargetType,
+)
 from metadata.services.matching import TIER_LIKELY, TIER_STRONG
 from metadata.services.provider_match import (
     MatchRequestError,
     ResolvedTarget,
+    _connection_rows,
     _provider_for,
     build_preview,
     resolve_target,
@@ -280,19 +286,72 @@ def set_ratings(library: Library, *, user, kind: str, ids: list[str], rating: An
     }
 
 
-def _suggestion(resolved: ResolvedTarget, connection_id: str | None) -> dict[str, Any]:
+def _known_ids(resolved: ResolvedTarget) -> dict[str, str]:
+    return {
+        str(key).casefold(): str(value).strip()
+        for key, value in (resolved.current.get("external_ids") or {}).items()
+        if str(value).strip()
+    }
+
+
+def _suggestion(
+    resolved: ResolvedTarget,
+    connection: dict[str, Any],
+    known_ids: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """One provider's rating suggestion for one item.
+
+    If the item (or an earlier provider's match) already has this provider's
+    own ID, it is looked up directly instead of searched by title.
+    """
+
+    connection_id = connection["connection_id"]
     base = {
         "kind": resolved.kind.value,
         "id": str(resolved.obj.id),
         "title": resolved.current.get("title") or "",
         "year": resolved.match_target.year,
         "content_rating": resolved.current.get("content_rating") or "",
+        "provider": connection["provider"],
+        "provider_label": connection["provider_label"],
+        "learned_ids": {},
     }
+    namespace = connection.get("id_namespace") or ""
+    direct_id = (known_ids or {}).get(namespace) if namespace else None
+
+    if direct_id:
+        try:
+            preview = build_preview(resolved, connection_id=connection_id, source_id=direct_id)
+        except MetadataProviderError as error:
+            if error.category != MetadataErrorCategory.NOT_FOUND:
+                return {**base, "status": "error", "message": error.message}
+            preview = None
+        if preview is not None:
+            details = preview["provider_metadata"]
+            candidate = {
+                "provider": connection["provider"],
+                "target_type": resolved.kind.value,
+                "source_id": preview["source_id"],
+                "title": details.get("title") or "",
+                "year": details.get("year"),
+                "match": {
+                    "tier": TIER_STRONG,
+                    "reasons": [
+                        {
+                            "code": "external_id_lookup",
+                            "label": f"Looked up by its {namespace.upper()} ID",
+                            "tone": "positive",
+                        }
+                    ],
+                },
+            }
+            return _from_preview(base, candidate, preview)
+
     try:
         search = search_candidates(resolved, connection_id=connection_id, query=None, year=resolved.match_target.year)
         candidates = search["results"]
         if not candidates and resolved.match_target.year:
-            # A wrong local year shouldn't hide the right title entirely.
+            # A wrong local year should not hide the right title entirely.
             candidates = search_candidates(resolved, connection_id=connection_id, query=None)["results"]
     except MetadataProviderError as error:
         return {**base, "status": "error", "message": error.message}
@@ -314,11 +373,19 @@ def _suggestion(resolved: ResolvedTarget, connection_id: str | None) -> dict[str
         preview = build_preview(resolved, connection_id=connection_id, source_id=confident["source_id"])
     except MetadataProviderError as error:
         return {**base, "status": "error", "message": error.message, "candidate": confident}
+    return _from_preview(base, confident, preview)
 
+
+def _from_preview(base: dict[str, Any], candidate: dict[str, Any], preview: dict[str, Any]) -> dict[str, Any]:
     row = next(item for item in preview["fields"] if item["field"] == "content_rating")
+    learned = {
+        item["namespace"]: item["value"]
+        for item in preview["provider_metadata"].get("external_ids") or []
+    }
     result = {
         **base,
-        "candidate": confident,
+        "learned_ids": learned,
+        "candidate": candidate,
         "rating": row["proposed"],
         "territory": row["territory"],
         "options": row.get("options") or [],
@@ -331,10 +398,12 @@ def _suggestion(resolved: ResolvedTarget, connection_id: str | None) -> dict[str
     if row["status"] == "unchanged":
         return {**result, "status": "unchanged", "message": "Already has this rating."}
 
+    estimated = bool(row.get("estimated"))
     return {
         **result,
-        "status": "suggested",
-        "message": "",
+        "status": "estimated" if estimated else "suggested",
+        "message": row["note"] if estimated else "",
+        "estimate": row.get("estimate"),
         # Everything the existing apply endpoint needs for this one field.
         "apply": {
             "connection": preview["connection"]["connection_id"],
@@ -345,6 +414,40 @@ def _suggestion(resolved: ResolvedTarget, connection_id: str | None) -> dict[str
             "provider_snapshot": preview["provider_snapshot"],
         },
     }
+
+
+# When several providers are tried in turn, these outcomes end the chain;
+# the rest let the next provider try, keeping the most useful fallback.
+_FINAL_STATUSES = {"suggested", "unchanged", "locked"}
+_FALLBACK_RANK = {"estimated": 0, "no_rating": 1, "needs_review": 2, "error": 3}
+
+
+def _suggestion_chain(resolved: ResolvedTarget, connections: list[dict[str, Any]]) -> dict[str, Any]:
+    """Try each provider in the library's priority order.
+
+    A real rating from any provider wins. Otherwise the most useful fallback
+    is kept: an estimate first, then "no rating", then "needs review". IDs a
+    provider's match reveals (for example TMDB giving the IMDb ID) let later
+    providers look the item up directly.
+    """
+
+    known = _known_ids(resolved)
+    best = None
+    tried = []
+    for connection in connections:
+        suggestion = _suggestion(resolved, connection, known)
+        tried.append(connection["provider_label"])
+        if suggestion["status"] in _FINAL_STATUSES:
+            best = suggestion
+            break
+        for namespace, value in suggestion.get("learned_ids", {}).items():
+            known.setdefault(namespace, value)
+        if best is None or _FALLBACK_RANK.get(suggestion["status"], 9) < _FALLBACK_RANK.get(best["status"], 9):
+            best = suggestion
+    best = dict(best)
+    best.pop("learned_ids", None)
+    best["tried"] = tried
+    return best
 
 
 def rating_suggestions(
@@ -374,13 +477,21 @@ def rating_suggestions(
         raise MatchRequestError("Some items aren't in this library.", status=404)
 
     targets = [resolve_target(user=user, target_type=kind, target_id=item) for item in unique_ids]
-    # Fail once, up front, if no provider connection can serve this library.
-    connection, _provider = _provider_for(targets[0], connection_id)
+    if connection_id:
+        # A specific provider was asked for: validate it and use only it.
+        connections = [_provider_for(targets[0], connection_id)[0]]
+    else:
+        connections = [row for row, _link in _connection_rows(targets[0]) if row["available"]]
+        if not connections:
+            _provider_for(targets[0], None)  # raises the standard "no provider" error
+    for connection in connections:
+        connection["id_namespace"] = get_provider_class(connection["provider"]).definition.metadata_id_namespace
     return {
         "library_id": str(library.id),
         "kind": kind,
-        "connection": connection,
-        "results": [_suggestion(target, connection["connection_id"]) for target in targets],
+        "connection": connections[0],
+        "connections": connections,
+        "results": [_suggestion_chain(target, connections) for target in targets],
     }
 
 
