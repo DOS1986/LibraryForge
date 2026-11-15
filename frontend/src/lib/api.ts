@@ -24,6 +24,7 @@ import type {
   MetadataMatchPreview,
   MetadataMatchSearchResult,
   MetadataSource,
+  NfoImportPreview,
   RatingCoverage,
   RatingSuggestions,
   NfoFile,
@@ -1391,5 +1392,34 @@ export async function getRatingSuggestions(
   return request<RatingSuggestions>(
     `/api/libraries/${libraryId}/ratings/suggestions/`
     + queryString({ kind, ids: ids.join(",") }),
+  )
+}
+
+
+// Read-only preview of importing <mpaa> ratings from indexed NFO files.
+export async function previewNfoRatingImport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  return request<NfoImportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-import/` + queryString({ kind }),
+  )
+}
+
+
+// Fills empty (or NFO-sourced) ratings from NFO files. The server recomputes
+// the plan, so ratings changed since the preview are never overwritten.
+export async function applyNfoRatingImport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  await ensureCsrf()
+
+  return request<NfoImportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-import/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    },
   )
 }

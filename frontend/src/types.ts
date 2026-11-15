@@ -1172,3 +1172,38 @@ export interface RatingSuggestions {
   connection: MetadataMatchConnection
   results: RatingSuggestion[]
 }
+
+
+// Importing ratings from indexed NFO files
+
+export type NfoImportAction =
+  | "set"
+  | "update"
+  | "unchanged"
+  | "conflict"
+  | "locked"
+  | "nfo_disagree"
+  | "no_rating_in_nfo"
+  | "no_nfo"
+
+export interface NfoImportRow {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  current: string
+  current_source: string | null
+  nfo_rating: string
+  nfo_path: string
+  action: NfoImportAction
+  other_values?: string[]
+}
+
+export interface NfoImportPreview {
+  library_id: string
+  kind: MetadataMatchKind
+  total: number
+  summary: Record<NfoImportAction, number>
+  rows: NfoImportRow[]
+  rows_truncated: boolean
+  written?: number
+}

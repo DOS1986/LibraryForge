@@ -59,6 +59,7 @@ from media.views import (
 )
 
 from metadata.rating_views import (
+    library_nfo_rating_import_view,
     library_rating_suggestions_view,
     library_ratings_view,
 )
@@ -306,6 +307,12 @@ urlpatterns = [
         "api/libraries/<uuid:library_id>/ratings/suggestions/",
         library_rating_suggestions_view,
         name="library-rating-suggestions",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/nfo-import/",
+        library_nfo_rating_import_view,
+        name="library-rating-nfo-import",
     ),
 
     path(

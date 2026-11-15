@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 
 import { CatalogItemEditorDialog } from "@/components/catalog/CatalogItemEditorDialog"
+import { NfoRatingImportCard } from "@/components/ratings/NfoRatingImportCard"
 
 import {
   ApiError,
@@ -319,6 +320,15 @@ export function LibraryRatingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <NfoRatingImportCard
+        libraryId={library.id}
+        kind={kind}
+        onImported={() => {
+          setSuggestions({})
+          void load(true)
+        }}
+      />
 
       <Card>
         <CardContent className="space-y-4 pt-6">

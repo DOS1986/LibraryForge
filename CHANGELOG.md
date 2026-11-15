@@ -33,6 +33,7 @@ pre-1.0 development.
 * Added a library Ratings tab with content-rating coverage for movies and TV series: counts and filters for rated, missing, and unrecognized ratings, title search, and each rating's source.
 * Added reviewed rating suggestions: LibraryForge searches the metadata provider for every unrated item on the current page (in sequential batches of 10, with progress and Stop), suggests a rating only for confident matches, and applies each rating only when confirmed, through the validated apply path.
 * Added a choice of 25, 50, 100, or 200 items per page on the Ratings tab, remembered in the browser, with first/previous/next/last navigation.
+* Added importing content ratings from indexed NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`), with a preview of what will be filled, kept, or disputed. It only fills empty or previously NFO-imported ratings, never replaces manual or provider ratings, links `tvshow.nfo` to series by folder, normalizes Kodi rating spellings, and works for read-only libraries because no files are changed.
 
 ### Changed
 

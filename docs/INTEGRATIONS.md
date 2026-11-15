@@ -118,6 +118,16 @@ The Ratings tab's **Find ratings** button covers every unrated item on the curre
 
 A suggested rating is saved only when the person clicks **Apply** for that item. That call goes through the metadata-match apply endpoint, so the stale-review checks, provenance, history, scan protection, and duplicate-submission handling all apply. Items that need review can be opened in the catalog editor's Match tab from the list. Suggestions share the metadata provider rate limit.
 
+### Importing ratings from NFO files
+
+`GET /api/libraries/<id>/ratings/nfo-import/?kind=<movie|series>` previews and `POST` (body `{"kind": ...}`) applies importing the `<mpaa>` rating from NFO files LibraryForge has already indexed. It reads stored, parsed NFO data and changes no files, so it works for read-only libraries.
+
+- **Movie NFOs** are the indexed `movie` NFOs matched to each movie. `<movie file>.nfo` is preferred over a shared `movie.nfo`, and if a movie's NFOs carry different ratings it is reported as `nfo_disagree` and left alone.
+- **`tvshow.nfo`** is linked to a series by folder: the deepest folder containing the `tvshow.nfo` that holds at least half of the series' episode files.
+- **Normalization** handles Kodi spellings such as `Rated PG-13`, `US:R`, and `US:PG-13 / UK:12A`. Recognized US ratings are upper-cased; other values (for example `Not Rated` or `15`) are kept as written and show as unrecognized.
+- **Outcomes per item:** `set` (empty rating filled), `update` (the current rating came from an earlier NFO import and the NFO changed), `unchanged`, `conflict` (a different rating from another source; kept), `locked` (manual or provider lock; kept), `nfo_disagree`, `no_rating_in_nfo`, `no_nfo`.
+- **Writes** happen only for `set` and `update`, and the plan is recomputed at apply time with the rows locked, so a rating changed after the preview is never overwritten. Each imported rating records the NFO as its source (unlocked, so a later NFO change can update it again) and a history entry citing the NFO path. Running the import again is a no-op.
+
 Episodes are not rated individually here. Media servers generally apply a series' rating to its episodes, but writing ratings into NFO files for Jellyfin is a separate step.
 
 ## Failure behavior
