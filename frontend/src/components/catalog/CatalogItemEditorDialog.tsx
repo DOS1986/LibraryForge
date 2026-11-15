@@ -45,6 +45,10 @@ import {
 } from "@/components/catalog/MetadataMatchPanel"
 
 import {
+  RatingCombobox,
+} from "@/components/ratings/RatingCombobox"
+
+import {
   ScrollableDialogBody,
   ScrollableDialogContent,
   ScrollableDialogHeader,
@@ -886,13 +890,42 @@ function MetadataEditor({
           detail.kind
           !== "season"
           && (
-            <TextField
-              label="Content Rating"
-              fieldName="content_rating"
-              form={form}
-              setForm={setForm}
-              states={states}
-            />
+            <div
+              className="block"
+            >
+              <label
+                htmlFor="metadata-content-rating"
+              >
+                <FieldLabel
+                  label="Content Rating"
+                  fieldName="content_rating"
+                  states={states}
+                />
+              </label>
+
+              <RatingCombobox
+                id="metadata-content-rating"
+                prefer={
+                  detail.kind === "movie"
+                    ? "movie"
+                    : "tv"
+                }
+                value={
+                  form.content_rating
+                  ?? ""
+                }
+                onChange={
+                  value =>
+                    setForm(
+                      current => ({
+                        ...current,
+                        content_rating:
+                          value,
+                      })
+                    )
+                }
+              />
+            </div>
           )
         }
 
