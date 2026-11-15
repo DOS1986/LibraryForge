@@ -171,6 +171,12 @@ export function NfoRatingExportCard({
           </div>
         )}
 
+        {preview?.root_error && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3" role="alert">
+            {preview.root_error}
+          </div>
+        )}
+
         {preview && (
           <div className="grid gap-2 sm:grid-cols-5">
             {SUMMARY_ORDER.map(action => (
@@ -193,7 +199,7 @@ export function NfoRatingExportCard({
           </div>
         )}
 
-        {preview && preview.writable && preview.files_to_write > 0 && !writing && !confirming && (
+        {preview && preview.writable && !preview.root_error && preview.files_to_write > 0 && !writing && !confirming && (
           <Button onClick={() => setConfirming(true)}>
             Write ratings to {preview.files_to_write} NFO file{preview.files_to_write === 1 ? "" : "s"}
           </Button>

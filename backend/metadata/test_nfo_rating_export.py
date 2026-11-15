@@ -3,6 +3,7 @@
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
@@ -264,3 +265,21 @@ class ManagementModeApiTests(_ExportTestCase):
         self.assertEqual(self.library.management_mode, "sidecar_only")
         response = self.client.patch(f"/api/libraries/{self.library.id}/", {"management_mode": "bogus"}, format="json")
         self.assertEqual(response.status_code, 400)
+
+
+class UnreachableShareTests(_ExportTestCase):
+    def test_unreachable_root_stops_once_with_the_reason(self):
+        _item, cars = self.movie("Cars", "G", MOVIE_NFO)
+        signin = OSError(None, "The user name or password is incorrect")
+        signin.winerror = 1326
+        with patch("pathlib.Path.resolve", side_effect=signin):
+            preview = self.client.get(self.url(), {"kind": "movie"}).data
+            self.assertIn("isn't signed in to that network share", preview["root_error"])
+            response = self.client.post(self.url(), {"kind": "movie"}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("user name or password is incorrect", response.data["detail"])
+        self.assertEqual(self.file_text(cars), MOVIE_NFO)
+
+    def test_reachable_root_has_no_error(self):
+        self.movie("Cars", "G", MOVIE_NFO)
+        self.assertIsNone(self.client.get(self.url(), {"kind": "movie"}).data["root_error"])

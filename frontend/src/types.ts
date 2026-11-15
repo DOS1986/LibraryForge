@@ -1262,6 +1262,7 @@ export interface NfoExportPreview {
   kind: MetadataMatchKind
   writable: boolean
   management_mode: ManagementMode
+  root_error: string | null
   summary: Record<NfoExportAction, number>
   files_to_write: number
   rows: NfoExportRow[]

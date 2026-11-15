@@ -61,6 +61,7 @@ pre-1.0 development.
 
 ### Fixed
 
+* Writing ratings to NFO files now checks the library folder once before writing and explains why it can't be reached (for example when Windows isn't signed in to the network share), instead of failing every file with a generic message.
 * A scan whose worker stopped mid-scan no longer stays "running" forever and blocks new scans of that library. Workers mark such scans as interrupted when they start, and starting a new scan replaces one whose worker is gone.
 
 ### Database

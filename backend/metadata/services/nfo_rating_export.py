@@ -153,6 +153,9 @@ def preview_nfo_export(library: Library, *, kind: str) -> dict[str, Any]:
         "kind": kind,
         "writable": writable(library),
         "management_mode": library.management_mode,
+        # Checked only when files would be written, so read-only previews
+        # don't touch the share.
+        "root_error": secure_nfo.library_root_error(library) if changes and writable(library) else None,
         "summary": _summary(rows),
         "files_to_write": len(changes),
         "rows": [{key: value for key, value in row.items() if key != "nfo_id"} for row in changes[:SAMPLE_LIMIT]],
@@ -221,6 +224,10 @@ def apply_nfo_export(
             "Change its management mode to Sidecar Only to allow it.",
             status=409,
         )
+    root_error = secure_nfo.library_root_error(library)
+    if root_error:
+        # Stop once with the reason instead of failing every file the same way.
+        raise MatchRequestError(root_error, status=409)
     try:
         size = int(batch) if batch not in (None, "") else DEFAULT_BATCH
     except (TypeError, ValueError) as exc:
