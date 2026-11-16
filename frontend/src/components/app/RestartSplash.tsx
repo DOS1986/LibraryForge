@@ -4,9 +4,7 @@ import {
   useState,
 } from "react"
 
-import {
-  Hammer,
-} from "lucide-react"
+import { LogoMark, Wordmark } from "@/components/brand/Logo"
 
 import type {
   SystemHealth,
@@ -41,26 +39,18 @@ function SplashFrame({
   subtitle: string
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
-      <div className="w-full max-w-xl text-center">
-        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border bg-background shadow-sm">
-          <Hammer className="h-10 w-10" />
-        </div>
-
-        <div className="text-3xl font-bold tracking-tight">
-          LibraryForge
-        </div>
-
+    <main className="flex min-h-svh items-center justify-center bg-background p-6">
+      <div className="w-full max-w-md text-center">
+        <LogoMark className="mx-auto mb-5 size-16 drop-shadow-sm" />
+        <Wordmark className="text-3xl" />
         <div className="mt-2 text-sm text-muted-foreground">
           {subtitle}
         </div>
-
-        <div className="mt-8 rounded-lg border bg-background p-6 text-lg font-medium shadow-sm">
+        <div className="mt-8 rounded-xl border bg-card p-5 text-base font-medium shadow-xs" role="status">
           {message}
         </div>
-
-        <div className="mx-auto mt-6 h-2 max-w-sm overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-2/3 animate-pulse rounded-full bg-foreground/70" />
+        <div className="mx-auto mt-6 h-1.5 max-w-xs overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-2/3 animate-pulse rounded-full bg-brand" />
         </div>
       </div>
     </main>

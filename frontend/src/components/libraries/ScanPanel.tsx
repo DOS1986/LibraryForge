@@ -25,6 +25,11 @@ import {
   startLibraryScan,
 } from "@/lib/api"
 
+import {
+  ScanJobNotice,
+  ScanWorkerBanner,
+} from "@/components/libraries/ScanJobNotice"
+
 import type {
   Library,
   ScanJob,
@@ -74,6 +79,7 @@ export function ScanPanel({
     && activeScanStatuses.includes(
       job.status
     )
+    && !job.stalled
 
 
   useEffect(
@@ -173,6 +179,7 @@ export function ScanPanel({
         !activeScanStatuses.includes(
           job.status
         )
+        || job.stalled
       ) {
         return
       }
@@ -201,6 +208,7 @@ export function ScanPanel({
                   "completed",
                   "completed_with_errors",
                   "failed",
+                  "cancelled",
                 ].includes(
                   updated.status
                 )
@@ -258,6 +266,9 @@ export function ScanPanel({
           <CardDescription>
             Discover media, inspect technical metadata, and index existing NFO files.
           </CardDescription>
+          <div className="mt-2">
+            <ScanWorkerBanner />
+          </div>
         </div>
 
         <Button
@@ -273,7 +284,11 @@ export function ScanPanel({
             loadingJob
               ? "Checking..."
               : active
-                ? "Scanning..."
+                ? (
+                  job?.waiting_for_worker
+                    ? "Queued..."
+                    : "Scanning..."
+                )
                 : "Scan Library"
           }
         </Button>
@@ -304,6 +319,11 @@ export function ScanPanel({
               space-y-4
             "
           >
+            <ScanJobNotice
+              job={job}
+              onChanged={setJob}
+            />
+
             <div
               className="
                 flex

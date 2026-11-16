@@ -399,52 +399,29 @@ export function LibraryNeedsAttentionPage() {
           space-y-6
         "
       >
+        {
+          semanticDisabled
+          && (
+            <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground" role="note">
+              Semantic matching is disabled for this library&apos;s current content type. Existing decisions can
+              still be reviewed here, but new scans won&apos;t create attention items.
+            </div>
+          )
+        }
+
         <Card>
           <CardHeader>
             <CardTitle>
-              Needs Attention
+              Items to review
             </CardTitle>
 
             <CardDescription>
-              Review files LibraryForge could not
-              identify safely, resolve metadata
-              conflicts, and inspect locked
-              decisions.
+              Files LibraryForge couldn&apos;t identify safely, metadata conflicts to resolve, and decisions
+              you&apos;ve confirmed.
             </CardDescription>
           </CardHeader>
 
-          {
-            semanticDisabled
-            && (
-              <CardContent>
-                <div
-                  className="
-                    rounded-md
-                    border
-                    bg-muted/30
-                    p-4
-                    text-sm
-                    text-muted-foreground
-                  "
-                >
-                  Semantic matching is disabled for
-                  this library's current Content Type. Existing
-                  historical decisions can still
-                  be reviewed here, but new scans
-                  will not create semantic
-                  attention items.
-                </div>
-              </CardContent>
-            )
-          }
-        </Card>
-
-        <Card>
-          <CardContent
-            className="
-              pt-6
-            "
-          >
+          <CardContent>
             <Tabs
               value={tab}
               onValueChange={

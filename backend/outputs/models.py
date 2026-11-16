@@ -82,6 +82,19 @@ class Projection(models.Model):
             "Copy",
         )
 
+    class Layout(models.TextChoices):
+        TEMPLATE = (
+            "template",
+            "Naming template",
+        )
+
+        # Online-video channels as TV shows: hardlinked, renamed videos
+        # with tvshow.nfo, episode NFOs, and artwork, kept in sync.
+        YOUTUBE_SHOWS = (
+            "youtube_shows",
+            "Channels as TV shows",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -92,6 +105,12 @@ class Projection(models.Model):
         "libraries.Library",
         on_delete=models.CASCADE,
         related_name="projections",
+    )
+
+    layout = models.CharField(
+        max_length=32,
+        choices=Layout.choices,
+        default=Layout.TEMPLATE,
     )
 
     output_profile = models.ForeignKey(
@@ -210,3 +229,102 @@ class ProjectionItem(models.Model):
                 ),
             )
         ]
+
+
+class ProjectionFile(models.Model):
+    """One file a projection wrote into its destination folder.
+
+    The manifest is the only list of files a sync may replace or delete:
+    anything else in the destination is never touched.
+    """
+
+    class Kind(models.TextChoices):
+        VIDEO = ("video", "Video link")
+        EPISODE_NFO = ("episode_nfo", "Episode NFO")
+        THUMB = ("thumb", "Episode thumbnail")
+        SHOW_NFO = ("show_nfo", "Show NFO")
+        POSTER = ("poster", "Show poster")
+        FANART = ("fanart", "Show fanart")
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    projection = models.ForeignKey(
+        Projection,
+        on_delete=models.CASCADE,
+        related_name="files",
+    )
+
+    # Relative to the destination, with forward slashes.
+    relative_path = models.TextField()
+
+    kind = models.CharField(
+        max_length=16,
+        choices=Kind.choices,
+    )
+
+    media_file = models.ForeignKey(
+        "media.MediaFile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="projection_files",
+    )
+
+    channel = models.ForeignKey(
+        "catalog.Channel",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="projection_files",
+    )
+
+    season_number = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    episode_number = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    # Size of the linked source when it was linked, or of the written file.
+    size_bytes = models.BigIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    # SHA-256 of a file LibraryForge wrote (blank for video links).
+    content_sha256 = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["relative_path"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "projection",
+                    "relative_path",
+                ],
+                name="unique_projection_file_path",
+            )
+        ]
+
+    def __str__(self):
+        return self.relative_path

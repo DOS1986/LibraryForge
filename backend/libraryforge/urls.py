@@ -15,6 +15,12 @@ from catalog.artwork_views import (
     library_artwork_refresh,
 )
 
+from catalog.nfo_editor_views import (
+    channel_editor,
+    item_nfo_view,
+    library_nfo_create_view,
+    online_video_editor,
+)
 from catalog.editor_views import (
     episode_editor,
     media_version_editor,
@@ -58,6 +64,21 @@ from media.views import (
     MediaItemViewSet,
 )
 
+from metadata.rating_views import (
+    library_nfo_rating_export_view,
+    library_nfo_rating_import_view,
+    library_rating_suggestions_view,
+    library_ratings_view,
+    library_set_ratings_view,
+    library_youtube_rating_hints_view,
+)
+from metadata.match_views import (
+    match_apply_view,
+    match_artwork_view,
+    match_context_view,
+    match_preview_view,
+    match_search_view,
+)
 from metadata.views import (
     MetadataSourceViewSet,
     NfoFileViewSet,
@@ -66,6 +87,7 @@ from metadata.views import (
 from outputs.views import (
     OutputProfileViewSet,
     ProjectionViewSet,
+    library_youtube_shows_view,
 )
 
 
@@ -251,6 +273,26 @@ urlpatterns = [
     ),
 
     path(
+        "api/catalog-editor/online-videos/<uuid:video_id>/",
+        online_video_editor,
+        name="catalog-editor-online-video",
+    ),
+    path(
+        "api/catalog-editor/channels/<uuid:channel_id>/",
+        channel_editor,
+        name="catalog-editor-channel",
+    ),
+    path(
+        "api/catalog-editor/<str:kind>/<uuid:item_id>/nfo/",
+        item_nfo_view,
+        name="catalog-editor-nfo",
+    ),
+    path(
+        "api/libraries/<uuid:library_id>/nfo-create/",
+        library_nfo_create_view,
+        name="library-nfo-create",
+    ),
+    path(
         "api/catalog-editor/movies/<uuid:item_id>/",
         movie_editor,
         name="catalog-editor-movie",
@@ -284,6 +326,75 @@ urlpatterns = [
         "api/catalog-editor/versions/<uuid:version_id>/make-primary/",
         media_version_make_primary,
         name="catalog-editor-version-primary",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/",
+        library_ratings_view,
+        name="library-ratings",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/set/",
+        library_set_ratings_view,
+        name="library-ratings-set",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/suggestions/",
+        library_rating_suggestions_view,
+        name="library-rating-suggestions",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/ratings/nfo-import/",
+        library_nfo_rating_import_view,
+        name="library-rating-nfo-import",
+    ),
+
+    path(
+        "api/libraries/<uuid:library_id>/youtube-shows/",
+        library_youtube_shows_view,
+        name="library-youtube-shows",
+    ),
+    path(
+        "api/libraries/<uuid:library_id>/ratings/youtube-hints/",
+        library_youtube_rating_hints_view,
+        name="library-rating-youtube-hints",
+    ),
+    path(
+        "api/libraries/<uuid:library_id>/ratings/nfo-export/",
+        library_nfo_rating_export_view,
+        name="library-rating-nfo-export",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/",
+        match_context_view,
+        name="metadata-match-context",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/artwork/",
+        match_artwork_view,
+        name="metadata-match-artwork",
+    ),
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/search/",
+        match_search_view,
+        name="metadata-match-search",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/preview/",
+        match_preview_view,
+        name="metadata-match-preview",
+    ),
+
+    path(
+        "api/metadata-match/<str:target_type>/<uuid:target_id>/apply/",
+        match_apply_view,
+        name="metadata-match-apply",
     ),
 
     path(

@@ -205,16 +205,19 @@ Completed
 
 0.1.0-alpha.3
 Local artwork management and application housekeeping
-Current / completing
+Completed
 
 0.1.0-alpha.4
 Online Video / TubeArchivist catalog
+Completed
 
 0.1.0-alpha.5
 Metadata providers
+Completed
 
 0.1.0-alpha.6
 Projection and output engine
+Current
 
 0.1.0-alpha.7
 Safe library operations

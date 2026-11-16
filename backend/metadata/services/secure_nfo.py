@@ -8,8 +8,7 @@ from django.utils import timezone
 from libraries.models import Library
 from metadata.models import NfoFile
 from metadata.services.nfo import (
-    parse_nfo_content as
-    _parse_nfo_content,
+    parse_nfo_content as _parse_nfo_content,
 )
 
 
@@ -89,6 +88,36 @@ def parse_nfo_content(
     )
 
 
+def library_root_problem(
+    exc: OSError,
+) -> str:
+    """A plain explanation of why a library folder can't be reached."""
+
+    if getattr(exc, "winerror", None) in (1326, 86, 1244, 5):
+        return (
+            "The library folder can't be reached: the computer running LibraryForge "
+            "isn't signed in to that network share (Windows reports: "
+            f"{exc.strerror or 'access denied'}). Sign in to the share and save "
+            "the credentials, then try again."
+        )
+    reason = exc.strerror or "it isn't available"
+    return f"The library folder can't be reached ({reason})."
+
+
+def library_root_error(
+    library,
+) -> str | None:
+    """None if the library's root folder is reachable, else why not."""
+
+    try:
+        root = Path(library.path).expanduser().resolve(strict=True)
+        if not root.is_dir():
+            return "The library folder can't be reached (it isn't a folder)."
+    except OSError as exc:
+        return library_root_problem(exc)
+    return None
+
+
 def _destination_for(
     nfo_file: NfoFile,
 ) -> Path:
@@ -130,7 +159,7 @@ def _destination_for(
         )
     except OSError as exc:
         raise PermissionError(
-            "The library root is unavailable."
+            library_root_problem(exc)
         ) from exc
 
     destination = (

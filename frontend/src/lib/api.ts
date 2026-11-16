@@ -17,7 +17,19 @@ import type {
   ManagementMode,
   MediaFile,
   MediaItemDetail,
+  MetadataMatchApplyRequest,
+  MetadataMatchApplyResult,
+  MetadataMatchContext,
+  MetadataMatchKind,
+  MetadataMatchPreview,
+  MetadataMatchSearchResult,
   MetadataSource,
+  NfoExportBatch,
+  NfoExportPreview,
+  NfoImportPreview,
+  RatingCoverage,
+  RatingKind,
+  RatingSuggestions,
   NfoFile,
   NfoValidation,
   OutputProfile,
@@ -27,6 +39,7 @@ import type {
   ProjectionRunResult,
   RestartRequestResult,
   ScanJob,
+  ScanWorkerStatus,
   SemanticMatch,
   SemanticResetResult,
   SemanticResolveInput,
@@ -37,20 +50,37 @@ import type {
   User,
   UserSettings,
   UserSettingsUpdate,
+  ShowsPlan,
+  ShowsSyncBatch,
+  YouTubeHintApplyResult,
+  YouTubeRatingHints,
+  ArtworkChoices,
+  ArtworkSaveResult,
+  ChannelEditorDetail,
+  NfoComparison,
+  NfoCreateBatch,
+  NfoCreatePreview,
+  NfoSyncKind,
+  NfoWriteResult,
+  OnlineVideoEditorDetail,
 } from "@/types"
 
 
 export class ApiError extends Error {
   status: number
+  // The server's machine-readable reason, when it sent one (for example "existing_artwork").
+  code: string | null
 
   constructor(
     message: string,
     status: number,
+    code: string | null = null,
   ) {
     super(message)
 
     this.name = "ApiError"
     this.status = status
+    this.code = code
   }
 }
 
@@ -217,6 +247,9 @@ async function request<T>(
         ),
       ),
       response.status,
+      data && typeof data === "object" && typeof (data as { code?: unknown }).code === "string"
+        ? (data as { code: string }).code
+        : null,
     )
   }
 
@@ -367,6 +400,29 @@ export async function getScanJob(
 ) {
   return request<ScanJob>(
     `/api/scan-jobs/${jobId}/`,
+  )
+}
+
+
+// Queued or stalled scans stop immediately; a running scan stops at its
+// worker's next progress checkpoint.
+export async function cancelScanJob(
+  jobId: string,
+) {
+  await ensureCsrf()
+
+  return request<ScanJob>(
+    `/api/scan-jobs/${jobId}/cancel/`,
+    {
+      method: "POST",
+    },
+  )
+}
+
+
+export async function getScanWorkerStatus() {
+  return request<ScanWorkerStatus>(
+    "/api/scan-jobs/worker/",
   )
 }
 
@@ -1046,6 +1102,50 @@ export async function createProjection(
 }
 
 
+// Channels as TV shows: a Jellyfin-ready folder of hardlinked, renamed videos.
+export async function getYouTubeShows(libraryId: string) {
+  return request<Projection[]>(`/api/libraries/${libraryId}/youtube-shows/`)
+}
+
+
+export async function createYouTubeShows(libraryId: string, destinationPath: string) {
+  await ensureCsrf()
+
+  return request<Projection>(
+    `/api/libraries/${libraryId}/youtube-shows/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ destination_path: destinationPath }),
+    },
+  )
+}
+
+
+// What a sync would change; computed from the database only.
+export async function getYouTubeShowsPlan(projectionId: string, channel?: string) {
+  return request<ShowsPlan>(
+    `/api/projections/${projectionId}/shows-plan/` + queryString({ channel: channel || undefined }),
+  )
+}
+
+
+// Applies one batch of the plan, starting after the cursor.
+export async function syncYouTubeShows(
+  projectionId: string,
+  input: { cursor: string | null; batch: number; channel: string | null },
+) {
+  await ensureCsrf()
+
+  return request<ShowsSyncBatch>(
+    `/api/projections/${projectionId}/shows-sync/`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+
 export async function previewProjection(
   projectionId: string,
 ) {
@@ -1261,6 +1361,336 @@ export async function requestSystemRestart() {
     "/api/system/restart/",
     {
       method: "POST",
+    },
+  )
+}
+
+
+// Metadata provider matching. GET only: these never change catalog data.
+
+function metadataMatchPath(
+  kind: MetadataMatchKind,
+  id: string,
+  action = "",
+) {
+  return (
+    `/api/metadata-match/${kind}/${id}/`
+    + (action ? `${action}/` : "")
+  )
+}
+
+
+function queryString(
+  params: Record<string, string | number | null | undefined>,
+) {
+  const search = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") {
+      search.set(key, String(value))
+    }
+  }
+
+  const text = search.toString()
+
+  return text ? `?${text}` : ""
+}
+
+
+export async function getMetadataMatchContext(
+  kind: MetadataMatchKind,
+  id: string,
+) {
+  return request<MetadataMatchContext>(
+    metadataMatchPath(kind, id),
+  )
+}
+
+
+export async function searchMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    query?: string
+    year?: string
+    page?: number
+  },
+) {
+  return request<MetadataMatchSearchResult>(
+    metadataMatchPath(kind, id, "search") + queryString(params),
+  )
+}
+
+
+export async function previewMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    source_id: string
+    territory?: string
+  },
+) {
+  return request<MetadataMatchPreview>(
+    metadataMatchPath(kind, id, "preview") + queryString(params),
+  )
+}
+
+
+// Online videos and channels: hand edits are locked against later scans.
+export async function getOnlineVideoEditor(id: string) {
+  return request<OnlineVideoEditorDetail>(`/api/catalog-editor/online-videos/${id}/`)
+}
+
+
+export async function updateOnlineVideoEditor(id: string, values: Record<string, unknown>) {
+  await ensureCsrf()
+  return request<OnlineVideoEditorDetail>(`/api/catalog-editor/online-videos/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(values),
+  })
+}
+
+
+export async function getChannelEditor(id: string) {
+  return request<ChannelEditorDetail>(`/api/catalog-editor/channels/${id}/`)
+}
+
+
+export async function updateChannelEditor(id: string, values: Record<string, unknown>) {
+  await ensureCsrf()
+  return request<ChannelEditorDetail>(`/api/catalog-editor/channels/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(values),
+  })
+}
+
+
+// LibraryForge's fields compared with the item's NFO.
+export async function getItemNfo(kind: NfoSyncKind, id: string) {
+  return request<NfoComparison>(`/api/catalog-editor/${kind}/${id}/nfo/`)
+}
+
+
+// Writes the chosen fields into the NFO (or creates it). Omit fields for every difference.
+export async function writeItemNfo(kind: NfoSyncKind, id: string, fields?: string[]) {
+  await ensureCsrf()
+  return request<NfoWriteResult>(`/api/catalog-editor/${kind}/${id}/nfo/`, {
+    method: "POST",
+    body: JSON.stringify(fields ? { fields } : {}),
+  })
+}
+
+
+export async function previewNfoCreate(libraryId: string, kind: "movie" | "series") {
+  return request<NfoCreatePreview>(`/api/libraries/${libraryId}/nfo-create/` + queryString({ kind }))
+}
+
+
+export async function createNfoBatch(libraryId: string, kind: "movie" | "series", cursor: string | null, batch: number) {
+  await ensureCsrf()
+  return request<NfoCreateBatch>(`/api/libraries/${libraryId}/nfo-create/`, {
+    method: "POST",
+    body: JSON.stringify({ kind, cursor, batch }),
+  })
+}
+
+
+// Artwork a source offers for this title. Never writes anything.
+export async function getMatchArtwork(
+  kind: MetadataMatchKind,
+  id: string,
+  params: {
+    connection?: string
+    prefer?: string
+    source_id?: string
+    tmdb?: string
+    imdb?: string
+    tvdb?: string
+  },
+) {
+  return request<ArtworkChoices>(metadataMatchPath(kind, id, "artwork") + queryString(params))
+}
+
+
+// Saves one offered image beside the item; the server re-checks it is offered.
+export async function saveMatchArtwork(
+  kind: MetadataMatchKind,
+  id: string,
+  body: {
+    connection: string
+    source_id?: string
+    ids?: Record<string, string>
+    url: string
+    replace?: boolean
+    operation_id: string
+  },
+) {
+  await ensureCsrf()
+
+  return request<ArtworkSaveResult>(
+    metadataMatchPath(kind, id, "artwork"),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+
+// The only metadata-match call that changes the catalog. The server rebuilds
+// and re-validates the reviewed preview; only field names are sent.
+export async function applyMetadataMatch(
+  kind: MetadataMatchKind,
+  id: string,
+  body: MetadataMatchApplyRequest,
+) {
+  await ensureCsrf()
+
+  return request<MetadataMatchApplyResult>(
+    metadataMatchPath(kind, id, "apply"),
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+
+export async function getLibraryRatings(
+  libraryId: string,
+  params: {
+    kind: RatingKind
+    status?: string
+    search?: string
+    page?: number
+    page_size?: number
+  },
+) {
+  return request<RatingCoverage>(
+    `/api/libraries/${libraryId}/ratings/` + queryString(params),
+  )
+}
+
+
+// Read-only: searches the provider and returns suggestions. Each rating is
+// applied separately, through applyMetadataMatch, after the user confirms it.
+export async function getRatingSuggestions(
+  libraryId: string,
+  kind: MetadataMatchKind,
+  ids: string[],
+) {
+  return request<RatingSuggestions>(
+    `/api/libraries/${libraryId}/ratings/suggestions/`
+    + queryString({ kind, ids: ids.join(",") }),
+  )
+}
+
+
+// Read-only preview of importing <mpaa> ratings from indexed NFO files.
+export async function previewNfoRatingImport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  return request<NfoImportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-import/` + queryString({ kind }),
+  )
+}
+
+
+// Fills empty (or NFO-sourced) ratings from NFO files. The server recomputes
+// the plan, so ratings changed since the preview are never overwritten.
+export async function applyNfoRatingImport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  await ensureCsrf()
+
+  return request<NfoImportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-import/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    },
+  )
+}
+
+
+// Read-only preview of writing catalog ratings into existing NFO files.
+export async function previewNfoRatingExport(
+  libraryId: string,
+  kind: MetadataMatchKind,
+) {
+  return request<NfoExportPreview>(
+    `/api/libraries/${libraryId}/ratings/nfo-export/` + queryString({ kind }),
+  )
+}
+
+
+// Writes one batch of NFO rating changes, continuing after `cursor`.
+export async function writeNfoRatingBatch(
+  libraryId: string,
+  kind: MetadataMatchKind,
+  cursor: string | null,
+  batch = 100,
+) {
+  await ensureCsrf()
+
+  return request<NfoExportBatch>(
+    `/api/libraries/${libraryId}/ratings/nfo-export/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind, cursor, batch }),
+    },
+  )
+}
+
+
+// Set (or clear, with "") the rating on chosen items. Recorded as manual
+// edits, so imports and provider suggestions won't replace them.
+// Rating hints for channels from YouTube's made-for-kids and age-restriction flags.
+export async function getYouTubeRatingHints(libraryId: string, ids: string[]) {
+  return request<YouTubeRatingHints>(
+    `/api/libraries/${libraryId}/ratings/youtube-hints/` + queryString({ ids: ids.join(",") }),
+  )
+}
+
+
+// Applies reviewed hints; the server recomputes each and writes only those still matching.
+export async function applyYouTubeRatingHints(libraryId: string, hints: Record<string, string>) {
+  await ensureCsrf()
+
+  return request<YouTubeHintApplyResult>(
+    `/api/libraries/${libraryId}/ratings/youtube-hints/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ hints }),
+    },
+  )
+}
+
+
+export async function setLibraryRatings(
+  libraryId: string,
+  kind: RatingKind,
+  ids: string[],
+  rating: string,
+) {
+  await ensureCsrf()
+
+  return request<{
+    library_id: string
+    kind: RatingKind
+    rating: string
+    requested: number
+    changed: number
+    unchanged: number
+  }>(
+    `/api/libraries/${libraryId}/ratings/set/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind, ids, rating }),
     },
   )
 }

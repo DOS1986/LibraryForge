@@ -4,6 +4,8 @@ import {
   useState,
 } from "react"
 
+
+import { PageHeader } from "@/components/app/PageHeader"
 import {
   Badge,
 } from "@/components/ui/badge"
@@ -37,7 +39,7 @@ function StateBadge({
   label: string
 }) {
   return (
-    <Badge variant={ok ? "secondary" : "destructive"}>
+    <Badge variant={ok ? "success" : "destructive"}>
       {label}
     </Badge>
   )
@@ -88,37 +90,30 @@ export function SystemStatusPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>System Status</CardTitle>
-              <CardDescription className="mt-2">
-                Runtime, dependency, and restart-supervisor information for this LibraryForge instance.
-              </CardDescription>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+      <PageHeader
+        title="System"
+        description="Runtime, dependency, and restart-supervisor information for this LibraryForge instance."
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        }
+      />
 
       {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {system && (
         <>
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
@@ -182,7 +177,7 @@ export function SystemStatusPage() {
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Version
                 </div>
                 <div className="mt-1 font-medium">
@@ -191,7 +186,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Environment
                 </div>
                 <div className="mt-1 font-medium">
@@ -200,7 +195,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Git
                 </div>
                 <div className="mt-1 font-medium">
@@ -210,7 +205,7 @@ export function SystemStatusPage() {
               </div>
 
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground">
                   Runtime started
                 </div>
                 <div className="mt-1 font-medium">
@@ -221,6 +216,71 @@ export function SystemStatusPage() {
           </Card>
         </>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Credits</CardTitle>
+          <CardDescription>
+            Third-party services LibraryForge can use when you connect them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://www.themoviedb.org/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              TMDB (The Movie Database)
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            This product uses TMDB and the TMDB APIs but is not endorsed,
+            certified, or otherwise approved by TMDB.
+          </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://www.omdbapi.com/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              OMDb API
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Data from the OMDb API (omdbapi.com), licensed CC BY-NC 4.0. OMDb is not
+            endorsed by or affiliated with IMDb.com.
+          </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://thetvdb.com/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              TheTVDB
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Metadata provided by TheTVDB. Please consider adding missing information or subscribing.
+          </p>
+          <div className="pt-2 font-medium">
+            <a
+              className="underline underline-offset-4"
+              href="https://fanart.tv/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Fanart.tv
+            </a>
+          </div>
+          <p className="text-muted-foreground">
+            Artwork from fanart.tv, contributed by its community.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }

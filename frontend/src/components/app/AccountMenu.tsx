@@ -214,11 +214,11 @@ export function AccountMenu({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="flex items-center gap-2 rounded-full border bg-background p-1 pr-2 transition hover:bg-muted"
+          className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 transition outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+          <span className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
             {initials}
           </span>
 
@@ -228,7 +228,7 @@ export function AccountMenu({
         {open && (
           <div
             role="menu"
-            className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-lg"
+            className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg"
           >
             <div className="px-4 py-3">
               <div className="truncate font-medium">
@@ -244,7 +244,7 @@ export function AccountMenu({
                 type="button"
                 role="menuitem"
                 onClick={() => goTo("/settings")}
-                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <Settings className="h-4 w-4" />
                 Settings
@@ -254,7 +254,7 @@ export function AccountMenu({
                 type="button"
                 role="menuitem"
                 onClick={() => goTo("/system")}
-                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <Activity className="h-4 w-4" />
                 System Status
@@ -266,7 +266,7 @@ export function AccountMenu({
                   role="menuitem"
                   onClick={requestRestart}
                   disabled={restarting}
-                  className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
                 >
                   <RotateCcw className="h-4 w-4" />
                   Restart LibraryForge
@@ -282,7 +282,7 @@ export function AccountMenu({
                   setOpen(false)
                   void onLogout()
                 }}
-                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <LogOut className="h-4 w-4" />
                 Log Out
@@ -307,7 +307,7 @@ export function AccountMenu({
           </DialogHeader>
 
           {restartError && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
               {restartError}
             </div>
           )}

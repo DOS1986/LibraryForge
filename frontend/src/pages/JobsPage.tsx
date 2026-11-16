@@ -3,6 +3,8 @@ import {
   useState,
 } from "react"
 
+
+import { PageHeader } from "@/components/app/PageHeader"
 import {
   Badge,
 } from "@/components/ui/badge"
@@ -22,6 +24,11 @@ import {
 import {
   getScanJobs,
 } from "@/lib/api"
+
+import {
+  ScanJobNotice,
+  ScanWorkerBanner,
+} from "@/components/libraries/ScanJobNotice"
 
 import {
   formatDateTime,
@@ -114,10 +121,15 @@ export function JobsPage() {
 
 
   return (
+    <>
+    <PageHeader
+      title="Jobs"
+      description="Library scans, their progress, and the workers that run them."
+    />
     <Card>
       <CardHeader>
         <CardTitle>
-          Jobs
+          Scan jobs
         </CardTitle>
 
         <CardDescription>
@@ -135,6 +147,8 @@ export function JobsPage() {
           space-y-4
         "
       >
+        <ScanWorkerBanner />
+
         <div
           className="
             space-y-3
@@ -190,16 +204,27 @@ export function JobsPage() {
 
                     <Badge
                       variant={
-                        job.status
-                        === "failed"
+                        job.status === "failed"
                           ? "destructive"
-                          : "secondary"
+                          : job.status === "completed"
+                            ? "success"
+                            : job.status === "completed_with_errors"
+                              ? "warning"
+                              : job.status === "running" || job.status === "discovering"
+                                ? "default"
+                                : "secondary"
                       }
                     >
                       {
                         job.status_label
                       }
                     </Badge>
+                  </div>
+                  <div className="mt-3">
+                    <ScanJobNotice
+                      job={job}
+                      onChanged={updated => setJobs(current => current.map(item => (item.id === updated.id ? updated : item)))}
+                    />
                   </div>
                 </div>
               )
@@ -225,5 +250,6 @@ export function JobsPage() {
         />
       </CardContent>
     </Card>
+    </>
   )
 }

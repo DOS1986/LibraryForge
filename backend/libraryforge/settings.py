@@ -208,6 +208,15 @@ REST_FRAMEWORK = {
     ),
 
     "PAGE_SIZE": 100,
+
+    # Budget for endpoints that call external metadata providers (search and
+    # preview). Applied per user; provider-side limits still apply.
+    "DEFAULT_THROTTLE_RATES": {
+        "metadata_provider": env(
+            "LIBRARYFORGE_METADATA_PROVIDER_RATE",
+            default="60/min",
+        ),
+    },
 }
 
 
@@ -298,6 +307,13 @@ LIBRARYFORGE_LOGIN_WINDOW_SECONDS = env.int(
 LIBRARYFORGE_MAX_NFO_BYTES = env.int(
     "LIBRARYFORGE_MAX_NFO_BYTES",
     default=10 * 1024 * 1024,
+)
+
+# Default number of scan worker processes for `run_scan_worker` (so up to
+# this many libraries scan at once). Override per run with --workers N.
+LIBRARYFORGE_SCAN_WORKERS = env.int(
+    "LIBRARYFORGE_SCAN_WORKERS",
+    default=1,
 )
 
 LIBRARYFORGE_ALLOWED_LIBRARY_ROOTS = _clean_list(

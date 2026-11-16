@@ -339,6 +339,7 @@ def serialize_history(
             "target_id": str(change.target_id),
             "source": change.source,
             "source_label": change.get_source_display(),
+            "source_ref": change.source_ref,
             "changes": change.changes,
             "note": change.note,
             "changed_by": (
