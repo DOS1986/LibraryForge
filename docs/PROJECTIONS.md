@@ -11,6 +11,30 @@ A projection builds a separate folder from a library, in the layout a media serv
 
 The engine is described in [ALPHA6_PROJECTION_DESIGN.md](ALPHA6_PROJECTION_DESIGN.md).
 
+## Which one do I need?
+
+LibraryForge gets ratings and metadata to your media server in one of two ways:
+
+* **NFOs and artwork in the library**, set up on the library's **NFO** page. The media server keeps reading the original folders, and LibraryForge writes NFOs and images beside the media.
+* **A projection folder**, set up on the **Projections** page. LibraryForge builds a second folder that the media server reads instead, with hardlinks, copies, or symbolic links to the media.
+
+Use NFOs in the library for a movie or TV library when all of these hold:
+
+* The library is in **Sidecar Only** or **Full Control** mode, so LibraryForge may write beside the media.
+* Your media server already recognizes the titles from their folder and file names.
+* One set of names suits every server you use.
+
+That covers most well-organized movie and TV libraries. It means one library per type in the media server, no second copy to keep in sync, and no change to who has access to what.
+
+Use a projection folder when one of these holds:
+
+* **Online video:** TubeArchivist and yt-dlp folders are channel and video IDs, which media servers can't read as shows. The **Channels as TV shows** layout is the only way to present them as shows, seasons, and episodes.
+* **Read Only libraries:** LibraryForge can't write beside the media, so a separate folder is the only way to add NFOs.
+* **Names the server gets wrong:** a projection presents clean `Title (Year)` and `Show S01E02` names without renaming your files.
+* **Several servers:** Emby or Kodi can each get a folder with their own artwork names from the same library.
+
+Both can run side by side, but don't point a media server at both for the same library, or every title will appear twice.
+
 ## The Outputs page
 
 **Outputs** in the sidebar lists everything LibraryForge writes for your media servers, across every library:
