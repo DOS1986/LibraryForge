@@ -611,7 +611,7 @@ export interface Projection {
   output_target: string
   name: string
   destination_path: string
-  layout: "template" | "youtube_shows" | "movies" | "tv"
+  layout: "template" | "youtube_shows" | "movies" | "tv" | "library_nfo"
   stale_policy: "remove_owned" | "keep"
   hardlink_acknowledged: boolean
   enabled: boolean
@@ -711,25 +711,6 @@ export interface NfoWriteResult {
   comparison: NfoComparison
 }
 
-export interface NfoCreatePreview {
-  library_id: string
-  kind: "movie" | "series"
-  writable: boolean
-  root_error: string | null
-  missing: number
-  ready: number
-  blocked: number
-  rows: { id: string; title: string; path: string; problem: string }[]
-  rows_truncated: boolean
-}
-
-export interface NfoCreateBatch {
-  created: number
-  problems: { title: string; path: string; message: string }[]
-  next_cursor: string | null
-  remaining: number
-}
-
 export type PlanActionKind = "create" | "update" | "relink" | "replace" | "delete" | "artwork" | "retain"
 
 export interface PlanFinding {
@@ -775,6 +756,8 @@ export interface ProjectionPlanDetail {
     movies?: number
     skipped?: number
     profile?: { target: string; label: string; verified: boolean; notes: string[] }
+    nfo_changes?: number
+    art_changes?: number
   }
   created_at: string
   expires_at: string

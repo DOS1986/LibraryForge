@@ -160,6 +160,15 @@ class ProjectionSerializer(
                 }
             )
 
+        layout = attrs.get("layout", getattr(self.instance, "layout", None))
+        in_place = Projection.Layout.LIBRARY_NFO
+        if self.instance is not None and "layout" in attrs and (attrs["layout"] == in_place) != (self.instance.layout == in_place):
+            raise serializers.ValidationError({"layout": "In-place NFO output can't be turned into a folder projection, or back."})
+        if layout == in_place:
+            # Writes into its own library; there's no output folder to check.
+            attrs.pop("destination_path", None)
+            return attrs
+
         try:
             validate_projection_destination(
                 library=library,

@@ -1,6 +1,6 @@
 # 0.1.0-alpha.6 — Projection and Output Engine (design)
 
-Status: approved 16 November 2026. Phases 1 to 3 implemented (see PROJECTIONS.md).
+Status: approved 16 November 2026. Phases 1 to 4 implemented (see PROJECTIONS.md).
 
 This design adapts the reconstructed "LibraryForge Projection and Output Engine" document (ChatGPT, 16 November 2026) to how LibraryForge is used today and to an alpha-sized scope. Where this document differs from that one, this one is the plan, and the reason is given.
 
@@ -132,7 +132,7 @@ A library-level workflow on the NFO page, for Sidecar Only and Full Control libr
 | `GET /projection-plans/{id}/`, `GET /projection-plans/{id}/actions/` | Plan status, findings, and paginated actions |
 | `POST /projection-plans/{id}/runs/` | Apply an approved plan (digest and idempotency key) |
 | `GET /projection-runs/{id}/`, `/actions/`, `POST /cancel/` | Run progress, journal, and cancellation |
-| `POST /libraries/{id}/nfo-output/plans/` | Library NFO output plans (same plan and run models) |
+| `POST /libraries/{id}/projections/` with `layout: library_nfo` | Library NFO output: a projection with no output folder, so its plans and runs use the projection routes above |
 
 The alpha.5 `shows-plan` and `shows-sync` routes and the template `preview` and `run` routes are removed together with the frontend change.
 

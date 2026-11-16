@@ -60,6 +60,7 @@ const RESULT_LABELS: Record<string, string> = {
   adopted: "recovered",
   kept: "left in place",
   conflict: "left alone",
+  replaced: "replaced (previous files kept as backups)",
   failed: "failed",
 }
 
@@ -93,7 +94,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 
-type Layout = "movies" | "tv" | "youtube_shows"
+type Layout = "movies" | "tv" | "youtube_shows" | "library_nfo"
 
 const LAYOUT_COPY: Record<Layout, { title: string; description: string; folder: string; scope: string; server: string }> = {
   youtube_shows: {
@@ -111,6 +112,14 @@ const LAYOUT_COPY: Record<Layout, { title: string; description: string; folder: 
     folder: "{server} Movies",
     scope: "",
     server: "Movies",
+  },
+  library_nfo: {
+    title: "NFOs and artwork in this library",
+    description:
+      "Creates missing NFOs beside each movie and episode (tvshow.nfo for shows), updates only the fields LibraryForge has a different value for while keeping every other tag, and copies each selected image into the item's folder under the media server's names. A different image already there is kept as a backup. Sidecar Only and Full Control libraries only.",
+    folder: "",
+    scope: "",
+    server: "",
   },
   tv: {
     title: "TV shows",
@@ -160,17 +169,22 @@ function resultSummary(counts: Record<string, number>) {
 }
 
 
-/** A library's projections: set one up, plan changes, apply them, and see history. */
+/**
+ * A library's projections: set one up, plan changes, apply them, and see history.
+ * With ``inPlace`` it manages the library's own NFOs and artwork instead of an output folder.
+ */
 export function ProjectionPanel({
   libraryId,
   libraryPath,
   contentType,
+  inPlace = false,
 }: {
   libraryId: string
   libraryPath: string
   contentType: string
+  inPlace?: boolean
 }) {
-  const fixedLayout = layoutFor(contentType)
+  const fixedLayout: Layout | null = inPlace ? "library_nfo" : layoutFor(contentType)
   const [newLayout, setNewLayout] = useState<Layout>(fixedLayout ?? "movies")
   const [projections, setProjections] = useState<Projection[]>([])
   const [selectedId, setSelectedId] = useState("")
@@ -197,10 +211,12 @@ export function ProjectionPanel({
   const selected = projections.find(item => item.id === selectedId)
 
   const loadProjections = useCallback(async () => {
-    const items = (await getLibraryProjections(libraryId)).filter(item => item.layout !== "template")
+    const items = (await getLibraryProjections(libraryId)).filter(item =>
+      inPlace ? item.layout === "library_nfo" : item.layout !== "template" && item.layout !== "library_nfo",
+    )
     setProjections(items)
     setSelectedId(current => (items.some(item => item.id === current) ? current : items.find(item => item.enabled)?.id ?? items[0]?.id ?? ""))
-  }, [libraryId])
+  }, [libraryId, inPlace])
 
   const loadHistory = useCallback(async (projectionId: string) => {
     const result = await getProjectionRuns(projectionId)
@@ -252,13 +268,18 @@ export function ProjectionPanel({
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await createLibraryProjection(libraryId, {
-        destination_path: destination.trim(),
-        layout: fixedLayout ? undefined : newLayout,
-        link_mode: linkMode,
-        hardlink_acknowledged: linkMode === "hardlink" && acknowledge,
-        target,
-      })
+      const created = await createLibraryProjection(
+        libraryId,
+        inPlace
+          ? { layout: "library_nfo", target }
+          : {
+              destination_path: destination.trim(),
+              layout: fixedLayout ? undefined : newLayout,
+              link_mode: linkMode,
+              hardlink_acknowledged: linkMode === "hardlink" && acknowledge,
+              target,
+            },
+      )
       void getOutputProfiles().then(setProfiles).catch(() => undefined)
       await loadProjections()
       setSelectedId(created.id)
@@ -379,10 +400,10 @@ export function ProjectionPanel({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{serverName} folder: {copy.title}</CardTitle>
+          <CardTitle>{inPlace ? `${copy.title} (${serverName})` : `${serverName} folder: ${copy.title}`}</CardTitle>
           <CardDescription>
-            {copy.description} Ratings from the Ratings tab are written into every NFO. Changes are planned for you to
-            review, then applied in the background by the scan worker.
+            {copy.description} Ratings from the Ratings tab are written into {inPlace ? "the" : "every"} NFOs. Changes are
+            planned for you to review, then applied in the background by the scan worker.
           </CardDescription>
         </CardHeader>
 
@@ -439,6 +460,7 @@ export function ProjectionPanel({
                   </span>
                 )}
               </label>
+              {!inPlace && (<>
               <div className="space-y-2">
                 <Label htmlFor="youtube-shows-destination">Destination folder</Label>
                 <Input
@@ -469,8 +491,9 @@ export function ProjectionPanel({
                   </span>
                 </label>
               )}
-              <Button type="submit" disabled={creating || !destination.trim()}>
-                {creating ? "Setting up..." : "Set up folder"}
+              </>)}
+              <Button type="submit" disabled={creating || (!inPlace && !destination.trim())}>
+                {creating ? "Setting up..." : inPlace ? "Set up NFO output" : "Set up folder"}
               </Button>
               {createError && <p className="text-destructive" role="alert">{createError}</p>}
             </form>
@@ -479,16 +502,16 @@ export function ProjectionPanel({
           {selected && (
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium break-all">{selected.destination_path}</span>
+                <span className="font-medium break-all">{inPlace ? libraryPath : selected.destination_path}</span>
                 <Badge variant="secondary">{serverName}</Badge>
-                <Badge variant="secondary">{selected.link_mode_label}</Badge>
+                {!inPlace && <Badge variant="secondary">{selected.link_mode_label}</Badge>}
                 {!selected.enabled && <Badge variant="outline">Turned off</Badge>}
                 {history?.latest_run && (
                   <span className="text-xs text-muted-foreground">
                     Last run {formatDateTime(history.latest_run.completed_at ?? history.latest_run.created_at)}
                   </span>
                 )}
-                {history && <span className="text-xs text-muted-foreground">{history.managed_files.toLocaleString()} managed files</span>}
+                {history && <span className="text-xs text-muted-foreground">{history.managed_files.toLocaleString()} {inPlace ? "artwork copies" : "managed files"}</span>}
               </div>
 
               {needsAcknowledgement && (
@@ -514,15 +537,17 @@ export function ProjectionPanel({
 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="space-y-1">
-                  <span className="block text-xs font-medium text-muted-foreground">When a source file is gone</span>
+                  <span className="block text-xs font-medium text-muted-foreground">
+                    {inPlace ? "When an image is no longer selected" : "When a source file is gone"}
+                  </span>
                   <select
                     className={SELECT_CLASS}
                     value={selected.stale_policy}
                     disabled={busy}
                     onChange={event => void update({ stale_policy: event.target.value as Projection["stale_policy"] })}
                   >
-                    <option value="remove_owned">Remove its files from this folder</option>
-                    <option value="keep">Keep them</option>
+                    <option value="remove_owned">{inPlace ? "Remove LibraryForge's copy" : "Remove its files from this folder"}</option>
+                    <option value="keep">{inPlace ? "Keep the copy" : "Keep them"}</option>
                   </select>
                 </label>
                 {profiles.length > 1 && (
@@ -645,6 +670,14 @@ export function ProjectionPanel({
                     </div>
                   )}
 
+                  {inPlace && plan.overview.nfo_changes !== undefined && (
+                    <p className="text-muted-foreground">
+                      {plan.overview.nfo_changes.toLocaleString()} NFO change{plan.overview.nfo_changes === 1 ? "" : "s"} and{" "}
+                      {(plan.overview.art_changes ?? 0).toLocaleString()} image change{plan.overview.art_changes === 1 ? "" : "s"}
+                      {plan.overview.skipped ? `; ${plan.overview.skipped} item(s) skipped (see notes above)` : ""}.
+                    </p>
+                  )}
+
                   {layout === "movies" && plan.overview.movies !== undefined && (
                     <p className="text-muted-foreground">
                       {plan.overview.movies.toLocaleString()} movie{plan.overview.movies === 1 ? "" : "s"} in this folder
@@ -764,7 +797,20 @@ export function ProjectionPanel({
 
               <div className="space-y-1 rounded-lg border bg-muted/40 p-3 text-xs">
                 <p className="font-medium">In {serverName}</p>
-                {server === "kodi" ? (
+                {inPlace ? (
+                  <ol className="list-decimal space-y-1 pl-4">
+                    <li>
+                      {server === "kodi"
+                        ? "Update the library, and refresh items that were already scanned, so Kodi reads the new NFOs."
+                        : "Scan the library (or refresh metadata for changed items) so the new NFOs and images are read."}
+                    </li>
+                    <li>
+                      {server === "kodi"
+                        ? "Use the Local information only scraper for this source so the NFOs and their ratings are kept."
+                        : "Keep the Nfo metadata reader on, and turn off the server's own NFO and artwork saving for this library, so it doesn't overwrite LibraryForge's files."}
+                    </li>
+                  </ol>
+                ) : server === "kodi" ? (
                   <ol className="list-decimal space-y-1 pl-4">
                     <li>
                       Add {selected.destination_path} as a video source and set its content to{" "}

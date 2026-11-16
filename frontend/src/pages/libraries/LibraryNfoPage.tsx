@@ -1,4 +1,4 @@
-import { NfoCreateCard } from "@/components/ratings/NfoCreateCard"
+import { ProjectionPanel } from "@/components/projections/ProjectionPanel"
 import {
   useCallback,
   useEffect,
@@ -498,23 +498,14 @@ export function LibraryNfoPage() {
   }
 
 
-  // Movies and TV libraries can get NFOs created from LibraryForge's metadata.
-  const createKinds: ("movie" | "series")[] =
-    library.content_type === "movies"
-      ? ["movie"]
-      : library.content_type === "tv"
-        ? ["series"]
-        : library.content_type === "mixed"
-          ? ["movie", "series"]
-          : []
+  // Movies and TV libraries can get NFOs and artwork written from LibraryForge's metadata.
+  const nfoOutput = ["movies", "tv", "mixed"].includes(library.content_type)
 
   return (
     <>
-      {createKinds.length > 0 && (
-        <div className="mb-6 space-y-6">
-          {createKinds.map(kind => (
-            <NfoCreateCard key={kind} libraryId={library.id} kind={kind} />
-          ))}
+      {nfoOutput && (
+        <div className="mb-6">
+          <ProjectionPanel libraryId={library.id} libraryPath={library.path} contentType={library.content_type} inPlace />
         </div>
       )}
       <Card>

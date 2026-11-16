@@ -23,9 +23,12 @@ pre-1.0 development.
   * Emby uses `clearlogo`. Generic projects poster and fanart only.
   * Golden file-list and NFO fixtures in `backend/outputs/golden/` cover each profile.
 * Added a media server choice when setting up a projection (`target` on the create endpoint) and a profile switch for existing projections. Changing a projection's profile, folder, media policy, or stale policy replaces its open plans.
-* Changed show and episode NFOs to mark the TVDB ID as the default, then TMDB.
 * Added `GET/POST /api/libraries/<id>/projections/` for any layout. The Projections page now sets up and runs movie, TV, and online-video folders.
 * Added copy and symlink media policies for projections, alongside hardlinks.
+* Added NFO and artwork output into the library itself, on the NFO page of movie, TV, and mixed libraries (Sidecar Only and Full Control only). It uses the same reviewed plans, background runs, and history as projections:
+  * Missing NFOs are created. Existing NFOs get only the fields LibraryForge has a different value for: other tags, comments, and formatting are kept, and NFO-only values are never erased. A run writes an NFO only if the file is still what the plan read.
+  * Each selected image is copied into the item's folder under the chosen media server's names. A different image already there is kept as a `.libraryforge-backup-` file. LibraryForge's own copies are refreshed, or removed once deselected, if unchanged.
+  * Read Only libraries are refused when planning and when running. A rerun with no changes writes nothing.
 
 ### Changed
 
@@ -34,6 +37,8 @@ pre-1.0 development.
   * Files of deleted videos are removed only after a finished scan with the library reachable, and a "keep them" policy is available.
   * After an interrupted run, files are adopted only where the run journal shows they were being created.
   * Files from alpha.5 are verified against disk once, on the first plan.
+* Changed show and episode NFOs to mark the TVDB ID as the default, then TMDB.
+* The NFO page's **Create missing NFOs** card is replaced by the NFO and artwork output panel. The `nfo-create` endpoint is unchanged.
 * Projection destinations now require `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` (development included) and must be separate from every library. Libraries can't be created over a projection's folder.
 
 ### Removed
@@ -42,6 +47,7 @@ pre-1.0 development.
 
 ### Database
 
+* Added migration `outputs.0006_library_nfo_layout`: the `library_nfo` projection layout. Choices only.
 * Added migration `outputs.0005_movie_tv_layouts`: `movies` and `tv` layouts, movie-NFO and artwork file kinds, a source fingerprint on managed files, and a group on plan actions. Additive only.
 * Added migrations `outputs.0003_projection_plans_and_runs` and `outputs.0004_projection_plan_overview`. They add projection plans, plan actions, runs, and the run journal; stale policy, hardlink acknowledgement, enabled, and preview flags on projections; and ownership and last run on managed files. Existing managed files are marked for verification and template projections are converted. Additive only.
 

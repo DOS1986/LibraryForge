@@ -44,7 +44,7 @@ from outputs.models import (
     ProjectionRunAction,
 )
 from outputs.security import ProjectionSecurityError, validate_projection_destination
-from outputs.services import fileops, movies_tv, profiles
+from outputs.services import fileops, library_nfo, movies_tv, profiles
 from outputs.services import youtube_shows as shows
 
 PLAN_TTL = timedelta(minutes=int(os.environ.get("LIBRARYFORGE_PROJECTION_PLAN_MINUTES", "30") or 30))
@@ -60,7 +60,10 @@ LAYOUTS = {
     Projection.Layout.YOUTUBE_SHOWS: shows,
     Projection.Layout.MOVIES: movies_tv,
     Projection.Layout.TV: movies_tv,
+    Projection.Layout.LIBRARY_NFO: library_nfo,
 }
+# Layouts that write into the library itself rather than an output folder.
+IN_PLACE = {Projection.Layout.LIBRARY_NFO}
 
 # Findings that stop a plan from being applied.
 BLOCKING = "blocking"
@@ -94,6 +97,8 @@ def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
         findings.append(_finding("UNSUPPORTED_LAYOUT", BLOCKING, "This projection's layout isn't supported yet."))
     if not projection.enabled:
         findings.append(_finding("DISABLED", BLOCKING, "This projection is turned off. Turn it on to build a plan."))
+    if projection.layout in IN_PLACE:
+        return findings + LAYOUTS[projection.layout].policy_findings(projection)
     try:
         validate_projection_destination(library=library, destination_path=projection.destination_path, user=user)
     except ProjectionSecurityError as error:
@@ -224,6 +229,7 @@ def _desired_json(desired) -> dict[str, Any]:
         "source_size": desired.media_file.size_bytes if desired.media_file else None,
         "source_path": desired.source_path,
         "fingerprint": desired.fingerprint,
+        **(desired.extra or {}),
     }
 
 
@@ -315,6 +321,8 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
 
 
 def _reason(action) -> str:
+    if getattr(action, "reason", ""):
+        return action.reason
     return {
         Action.CREATE: "New file",
         Action.UPDATE: "LibraryForge's values changed",
@@ -577,9 +585,10 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
     blocking = [f for f in _policy_findings(projection, run.requested_by) if f["severity"] == BLOCKING]
     if blocking:
         return finish(ProjectionRun.Status.FAILED, blocking[0]["message"])
+    in_place = projection.layout in IN_PLACE
     try:
         library_root = Path(projection.library.path).expanduser().resolve(strict=True)
-        root = fileops._destination_root(projection)
+        root = None if in_place else fileops._destination_root(projection)
     except (OSError, MatchRequestError) as error:
         return finish(ProjectionRun.Status.FAILED, getattr(error, "message", None) or secure_nfo.library_root_problem(error))
 
@@ -604,19 +613,21 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
         else:
             try:
                 with transaction.atomic():
-                    result = fileops._apply(
-                        projection,
-                        root,
-                        library_root,
-                        _rebuild(projection, record),
-                        allow_adopt=_adoptable(projection, record.relative_path, run),
-                    )
+                    if in_place:
+                        result, message = LAYOUTS[projection.layout].apply_record(projection, record, library_root)
+                    else:
+                        result = fileops._apply(
+                            projection,
+                            root,
+                            library_root,
+                            _rebuild(projection, record),
+                            allow_adopt=_adoptable(projection, record.relative_path, run),
+                        )
+                        message = "Changed outside LibraryForge, so it was left in place." if result == "kept" else ""
                     ProjectionFile.objects.filter(projection=projection, updated_at__gte=started).update(
                         ownership=ProjectionFile.Ownership.OWNED, last_run=run
                     )
-                state, message = ProjectionRunAction.State.DONE, ""
-                if result == "kept":
-                    message = "Changed outside LibraryForge, so it was left in place."
+                state = ProjectionRunAction.State.DONE
             except fileops._CrossDevice:
                 journal.state, journal.result = ProjectionRunAction.State.FAILED, "failed"
                 journal.message = "Hardlinks can't cross volumes."
@@ -633,7 +644,8 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
         journal.state, journal.result, journal.message = state, result, message
         journal.save(update_fields=["state", "result", "message", "updated_at"])
         counts[result] = counts.get(result, 0) + 1
-        if message and len(problems) < 500:
+        # Notes on successful actions (a backup kept) stay in the journal.
+        if message and (state != ProjectionRunAction.State.DONE or result == "kept") and len(problems) < 500:
             problems.append({"path": record.relative_path, "action": record.action, "result": result, "message": message})
         run.done = index + 1
         run.counts = counts

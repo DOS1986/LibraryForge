@@ -107,6 +107,12 @@ class Projection(models.Model):
             "TV shows",
         )
 
+        # NFOs and artwork written into the library itself (no output folder).
+        LIBRARY_NFO = (
+            "library_nfo",
+            "NFOs and artwork in the library",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,

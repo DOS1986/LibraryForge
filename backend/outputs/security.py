@@ -54,7 +54,8 @@ def overlapping_projection(path: Path):
 
     from outputs.models import Projection
 
-    for projection in Projection.objects.all().only("id", "name", "destination_path"):
+    # In-place NFO output writes into its own library and has no output folder.
+    for projection in Projection.objects.exclude(layout=Projection.Layout.LIBRARY_NFO).only("id", "name", "destination_path"):
         try:
             destination = _resolve(projection.destination_path)
         except (OSError, ValueError):

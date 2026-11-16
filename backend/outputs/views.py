@@ -229,6 +229,7 @@ _DEFAULT_FOLDER = {
     Projection.Layout.MOVIES: "movies",
     Projection.Layout.TV: "TV shows",
     Projection.Layout.YOUTUBE_SHOWS: "YouTube shows",
+    Projection.Layout.LIBRARY_NFO: "NFOs in this library",
 }
 
 
@@ -252,7 +253,9 @@ def library_projections_view(request, library_id):
     """GET lists every projection of a library; POST creates one.
 
     Body: ``destination_path``; optional ``name``, ``layout`` (required for a
-    mixed library: movies, tv, or youtube_shows), ``link_mode`` (hardlink,
+    mixed library: movies, tv, or youtube_shows; ``library_nfo`` for NFOs and
+    artwork written into the library itself, one per library, with no
+    destination), ``link_mode`` (hardlink,
     copy, or symlink; hardlink by default), ``hardlink_acknowledged``, and
     ``output_profile`` or ``target`` (jellyfin, emby, kodi, or generic: your
     first profile for that media server, created if needed; Jellyfin by
@@ -264,19 +267,28 @@ def library_projections_view(request, library_id):
         projections = Projection.objects.filter(library=library).select_related("library", "output_profile")
         return Response(ProjectionSerializer(projections, many=True).data)
 
-    layout = _LAYOUT_FOR_TYPE.get(library.content_type) or str(request.data.get("layout") or "")
+    requested = str(request.data.get("layout") or "")
+    in_place = requested == Projection.Layout.LIBRARY_NFO
+    layout = requested if in_place else (_LAYOUT_FOR_TYPE.get(library.content_type) or requested)
     if layout not in Projection.Layout.values or layout == Projection.Layout.TEMPLATE:
-        raise ValidationError({"layout": "Choose a layout: movies, tv, or youtube_shows."})
-    link_mode = str(request.data.get("link_mode") or Projection.LinkMode.HARDLINK)
-    if link_mode not in Projection.LinkMode.values:
-        raise ValidationError({"link_mode": "Choose hardlink, copy, or symlink."})
-    destination = str(request.data.get("destination_path") or "").strip()
-    try:
-        validate_projection_destination(library=library, destination_path=destination, user=request.user)
-    except ProjectionSecurityError as exc:
-        raise ValidationError({"destination_path": str(exc)}) from exc
-    if Projection.objects.filter(destination_path__iexact=destination).exists():
-        raise ValidationError({"destination_path": "Another projection already writes to that folder."})
+        raise ValidationError({"layout": "Choose a layout: movies, tv, youtube_shows, or library_nfo."})
+    if in_place:
+        if library.content_type not in ("movies", "tv", "mixed"):
+            raise ValidationError({"layout": "NFOs and artwork can be written into movie, TV, and mixed libraries."})
+        if Projection.objects.filter(library=library, layout=layout).exists():
+            raise ValidationError({"layout": "This library already has in-place NFO output."})
+        link_mode, destination = Projection.LinkMode.COPY, ""
+    else:
+        link_mode = str(request.data.get("link_mode") or Projection.LinkMode.HARDLINK)
+        if link_mode not in Projection.LinkMode.values:
+            raise ValidationError({"link_mode": "Choose hardlink, copy, or symlink."})
+        destination = str(request.data.get("destination_path") or "").strip()
+        try:
+            validate_projection_destination(library=library, destination_path=destination, user=request.user)
+        except ProjectionSecurityError as exc:
+            raise ValidationError({"destination_path": str(exc)}) from exc
+        if Projection.objects.filter(destination_path__iexact=destination).exists():
+            raise ValidationError({"destination_path": "Another projection already writes to that folder."})
 
     profile_id = request.data.get("output_profile")
     if profile_id:
@@ -293,7 +305,7 @@ def library_projections_view(request, library_id):
         destination_path=destination,
         layout=layout,
         link_mode=link_mode,
-        hardlink_acknowledged=bool(request.data.get("hardlink_acknowledged")),
+        hardlink_acknowledged=False if in_place else bool(request.data.get("hardlink_acknowledged")),
         generate_nfo=True,
     )
     return Response(ProjectionSerializer(projection).data, status=status.HTTP_201_CREATED)

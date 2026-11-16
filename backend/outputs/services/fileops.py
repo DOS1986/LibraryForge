@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import uuid
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -123,6 +123,8 @@ class Desired:
     # The movie, series, or channel this file belongs to.
     group_id: str = ""
     group_title: str = ""
+    # Layout-specific details stored with the plan action (in-place NFO output).
+    extra: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -135,6 +137,7 @@ class Action:
     row: ProjectionFile | None = None
     group_id: str = ""
     group_title: str = ""
+    reason: str = ""
 
     def __post_init__(self) -> None:
         if not self.group_id and self.desired is not None:

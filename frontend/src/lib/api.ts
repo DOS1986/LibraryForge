@@ -60,8 +60,6 @@ import type {
   RunJournalRow,
   ChannelEditorDetail,
   NfoComparison,
-  NfoCreateBatch,
-  NfoCreatePreview,
   NfoSyncKind,
   NfoWriteResult,
   OnlineVideoEditorDetail,
@@ -1102,10 +1100,10 @@ export async function getLibraryProjections(libraryId: string) {
 export async function createLibraryProjection(
   libraryId: string,
   input: {
-    destination_path: string
-    layout?: "movies" | "tv" | "youtube_shows"
-    link_mode: Projection["link_mode"]
-    hardlink_acknowledged: boolean
+    destination_path?: string
+    layout?: "movies" | "tv" | "youtube_shows" | "library_nfo"
+    link_mode?: Projection["link_mode"]
+    hardlink_acknowledged?: boolean
     target?: "jellyfin" | "emby" | "kodi" | "generic"
   },
 ) {
@@ -1486,20 +1484,6 @@ export async function writeItemNfo(kind: NfoSyncKind, id: string, fields?: strin
   return request<NfoWriteResult>(`/api/catalog-editor/${kind}/${id}/nfo/`, {
     method: "POST",
     body: JSON.stringify(fields ? { fields } : {}),
-  })
-}
-
-
-export async function previewNfoCreate(libraryId: string, kind: "movie" | "series") {
-  return request<NfoCreatePreview>(`/api/libraries/${libraryId}/nfo-create/` + queryString({ kind }))
-}
-
-
-export async function createNfoBatch(libraryId: string, kind: "movie" | "series", cursor: string | null, batch: number) {
-  await ensureCsrf()
-  return request<NfoCreateBatch>(`/api/libraries/${libraryId}/nfo-create/`, {
-    method: "POST",
-    body: JSON.stringify({ kind, cursor, batch }),
   })
 }
 
