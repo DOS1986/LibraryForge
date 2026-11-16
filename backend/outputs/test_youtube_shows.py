@@ -82,7 +82,7 @@ class _ShowsBase(APITestCase):
         # Removals need a finished scan of the library.
         ScanJob.objects.create(library=self.library, status=ScanJob.Status.COMPLETED)
 
-        thumb_patch = patch("outputs.services.youtube_shows._thumbnail", return_value=JPEG)
+        thumb_patch = patch("outputs.services.fileops._thumbnail", return_value=JPEG)
         art_patch = patch("outputs.services.youtube_shows._channel_artwork", return_value={})
         thumb_patch.start()
         self.artwork = art_patch.start()
@@ -442,7 +442,7 @@ class PlanAndRunTests(_ShowsBase):
 
     def test_cross_volume_destination_stops_with_an_explanation(self):
         projection = self.create()
-        with patch("outputs.services.youtube_shows.os.link", side_effect=OSError(errno.EXDEV, "cross-device")):
+        with patch("outputs.services.fileops.os.link", side_effect=OSError(errno.EXDEV, "cross-device")):
             _counts, run = self.sync_all(projection)
         self.assertEqual(run["status"], "failed")
         self.assertIn("same share and volume", run["error"])

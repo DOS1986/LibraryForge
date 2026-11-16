@@ -611,7 +611,7 @@ export interface Projection {
   output_target: string
   name: string
   destination_path: string
-  layout: "template" | "youtube_shows"
+  layout: "template" | "youtube_shows" | "movies" | "tv"
   stale_policy: "remove_owned" | "keep"
   hardlink_acknowledged: boolean
   enabled: boolean
@@ -743,8 +743,8 @@ export interface PlanActionRow {
   action: PlanActionKind
   kind: string
   path: string
-  channel: string
-  channel_id: string | null
+  group: string
+  group_id: string | null
   reason: string
 }
 
@@ -771,6 +771,9 @@ export interface ProjectionPlanDetail {
     artwork_available?: boolean
     files?: Record<string, number>
     channels?: { id: string; title: string; folder: string; rating: string; videos: number; pending: number }[]
+    series?: { id: string; title: string; folder: string; rating: string; episodes: number; pending: number }[]
+    movies?: number
+    skipped?: number
   }
   created_at: string
   expires_at: string

@@ -12,13 +12,13 @@ import { JellyfinRefreshCard } from "@/components/jellyfin/JellyfinPanels"
 import {
   buildProjectionPlan,
   cancelProjectionRun,
-  createYouTubeShows,
+  createLibraryProjection,
   deleteProjection,
   getProjectionPlanActions,
   getProjectionRun,
   getProjectionRunJournal,
   getProjectionRuns,
-  getYouTubeShows,
+  getLibraryProjections,
   requestProjectionRun,
   updateProjection,
 } from "@/lib/api"
@@ -72,6 +72,8 @@ const RUN_VARIANT: Record<string, "success" | "warning" | "destructive" | "defau
 }
 
 const KIND_LABELS: Record<string, string> = {
+  movie_nfo: "Movie NFO",
+  art: "Artwork",
   video: "Video",
   episode_nfo: "Episode NFO",
   thumb: "Thumbnail",
@@ -89,12 +91,47 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 
-function suggestedDestination(libraryPath: string) {
+type Layout = "movies" | "tv" | "youtube_shows"
+
+const LAYOUT_COPY: Record<Layout, { title: string; description: string; folder: string; scope: string; server: string }> = {
+  youtube_shows: {
+    title: "Jellyfin folder: channels as TV shows",
+    description:
+      "One show per channel with tvshow.nfo, poster, and fanart, a season per upload year, and each video renamed with its own NFO and thumbnail. TubeArchivist's folder is never changed.",
+    folder: "YouTube Shows",
+    scope: "Channels",
+    server: "Shows",
+  },
+  movies: {
+    title: "Jellyfin folder: movies",
+    description:
+      "Each movie in its own Title (Year) folder with a renamed copy or link of its main version, a movie NFO, and its selected artwork. Your library's folders are never changed.",
+    folder: "Jellyfin Movies",
+    scope: "",
+    server: "Movies",
+  },
+  tv: {
+    title: "Jellyfin folder: TV shows",
+    description:
+      "Each show in a Show (Year) folder with tvshow.nfo and artwork, Season 01 folders with season art, and every episode renamed Show S01E02 - Title with its own NFO and thumbnail. Your library's folders are never changed.",
+    folder: "Jellyfin TV",
+    scope: "Shows",
+    server: "Shows",
+  },
+}
+
+
+function layoutFor(contentType: string): Layout | null {
+  return contentType === "movies" ? "movies" : contentType === "tv" ? "tv" : contentType === "online_video" ? "youtube_shows" : null
+}
+
+
+function suggestedDestination(libraryPath: string, layout: Layout) {
   // Next to the library folder: same share and volume, so hardlinks work.
   const separator = libraryPath.includes("\\") ? "\\" : "/"
   const trimmed = libraryPath.replace(/[\\/]+$/, "")
   const parent = trimmed.slice(0, Math.max(trimmed.lastIndexOf(separator), 0))
-  return parent ? `${parent}${separator}YouTube Shows` : ""
+  return parent ? `${parent}${separator}${LAYOUT_COPY[layout].folder}` : ""
 }
 
 
@@ -106,10 +143,22 @@ function resultSummary(counts: Record<string, number>) {
 }
 
 
-export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: string; libraryPath: string }) {
+/** A library's projections: set one up, plan changes, apply them, and see history. */
+export function ProjectionPanel({
+  libraryId,
+  libraryPath,
+  contentType,
+}: {
+  libraryId: string
+  libraryPath: string
+  contentType: string
+}) {
+  const fixedLayout = layoutFor(contentType)
+  const [newLayout, setNewLayout] = useState<Layout>(fixedLayout ?? "movies")
   const [projections, setProjections] = useState<Projection[]>([])
   const [selectedId, setSelectedId] = useState("")
-  const [destination, setDestination] = useState(() => suggestedDestination(libraryPath))
+  const [destination, setDestination] = useState(() => suggestedDestination(libraryPath, fixedLayout ?? "movies"))
+  const [linkMode, setLinkMode] = useState<Projection["link_mode"]>("hardlink")
   const [acknowledge, setAcknowledge] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -129,7 +178,7 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
   const selected = projections.find(item => item.id === selectedId)
 
   const loadProjections = useCallback(async () => {
-    const items = await getYouTubeShows(libraryId)
+    const items = (await getLibraryProjections(libraryId)).filter(item => item.layout !== "template")
     setProjections(items)
     setSelectedId(current => (items.some(item => item.id === current) ? current : items.find(item => item.enabled)?.id ?? items[0]?.id ?? ""))
   }, [libraryId])
@@ -183,7 +232,12 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await createYouTubeShows(libraryId, destination.trim(), acknowledge)
+      const created = await createLibraryProjection(libraryId, {
+        destination_path: destination.trim(),
+        layout: fixedLayout ? undefined : newLayout,
+        link_mode: linkMode,
+        hardlink_acknowledged: linkMode === "hardlink" && acknowledge,
+      })
       await loadProjections()
       setSelectedId(created.id)
     } catch (err) {
@@ -288,17 +342,22 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
   const warnings = plan?.findings.filter(finding => finding.severity === "warning") ?? []
   const active = run && ["queued", "running"].includes(run.status)
   const needsAcknowledgement = selected && selected.link_mode === "hardlink" && !selected.hardlink_acknowledged
+  const layout: Layout = (selected?.layout as Layout | undefined) ?? fixedLayout ?? newLayout
+  const copy = LAYOUT_COPY[layout] ?? LAYOUT_COPY.movies
+  const scopes = layout === "youtube_shows"
+    ? (plan?.overview.channels ?? []).map(item => ({ id: item.id, title: item.title }))
+    : layout === "tv"
+      ? (plan?.overview.series ?? []).map(item => ({ id: item.id, title: item.title }))
+      : []
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Jellyfin folder: channels as TV shows</CardTitle>
+          <CardTitle>{copy.title}</CardTitle>
           <CardDescription>
-            A separate folder in the layout Jellyfin expects: one show per channel with tvshow.nfo, poster, and fanart, a
-            season per upload year, and each video renamed with its own NFO and thumbnail. Ratings from the Ratings tab are
-            written into every NFO. TubeArchivist&apos;s folder is never changed. Changes are planned for you to review, then
-            applied in the background by the scan worker.
+            {copy.description} Ratings from the Ratings tab are written into every NFO. Changes are planned for you to
+            review, then applied in the background by the scan worker.
           </CardDescription>
         </CardHeader>
 
@@ -318,12 +377,30 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
 
           {!projections.length && (
             <form className="space-y-3" onSubmit={create}>
+              {!fixedLayout && (
+                <label className="block space-y-1">
+                  <span className="block text-xs font-medium text-muted-foreground">Layout</span>
+                  <select
+                    className={SELECT_CLASS}
+                    value={newLayout}
+                    onChange={event => {
+                      const next = event.target.value as Layout
+                      setNewLayout(next)
+                      setDestination(suggestedDestination(libraryPath, next))
+                    }}
+                  >
+                    <option value="movies">Movies</option>
+                    <option value="tv">TV shows</option>
+                    <option value="youtube_shows">Online video channels as TV shows</option>
+                  </select>
+                </label>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="youtube-shows-destination">Destination folder</Label>
                 <Input
                   id="youtube-shows-destination"
                   value={destination}
-                  placeholder="\\server\share\YouTube Shows"
+                  placeholder={`\\\\server\\share\\${copy.folder}`}
                   onChange={event => setDestination(event.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -331,13 +408,23 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
                   LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS. It&apos;s created if it doesn&apos;t exist.
                 </p>
               </div>
-              <label className="flex items-start gap-2">
-                <input type="checkbox" className="mt-0.5 size-4" checked={acknowledge} onChange={event => setAcknowledge(event.target.checked)} />
-                <span>
-                  Use hardlinks. A hardlink is the same file as the original under a second name, so it takes no extra
-                  space, and nothing should write into videos through the Jellyfin folder.
-                </span>
+              <label className="block space-y-1">
+                <span className="block text-xs font-medium text-muted-foreground">Media files</span>
+                <select className={SELECT_CLASS} value={linkMode} onChange={event => setLinkMode(event.target.value as Projection["link_mode"])}>
+                  <option value="hardlink">Hardlinks (no extra space; same volume only)</option>
+                  <option value="copy">Copies (independent files; uses the space again)</option>
+                  <option value="symlink">Symbolic links (where the share supports them)</option>
+                </select>
               </label>
+              {linkMode === "hardlink" && (
+                <label className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-0.5 size-4" checked={acknowledge} onChange={event => setAcknowledge(event.target.checked)} />
+                  <span>
+                    I understand a hardlink is the same file as the original under a second name, so nothing should write
+                    into media through the Jellyfin folder.
+                  </span>
+                </label>
+              )}
               <Button type="submit" disabled={creating || !destination.trim()}>
                 {creating ? "Setting up..." : "Set up folder"}
               </Button>
@@ -382,7 +469,7 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="space-y-1">
-                  <span className="block text-xs font-medium text-muted-foreground">When a video is deleted</span>
+                  <span className="block text-xs font-medium text-muted-foreground">When a source file is gone</span>
                   <select
                     className={SELECT_CLASS}
                     value={selected.stale_policy}
@@ -393,15 +480,17 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
                     <option value="keep">Keep them</option>
                   </select>
                 </label>
-                <label className="space-y-1">
-                  <span className="block text-xs font-medium text-muted-foreground">Channels</span>
-                  <select className={SELECT_CLASS} value={channel} onChange={event => setChannel(event.target.value)}>
-                    <option value="">All channels</option>
-                    {(plan?.overview.channels ?? []).map(item => (
-                      <option key={item.id} value={item.id}>{item.title}</option>
-                    ))}
-                  </select>
-                </label>
+                {copy.scope && (
+                  <label className="space-y-1">
+                    <span className="block text-xs font-medium text-muted-foreground">{copy.scope}</span>
+                    <select className={SELECT_CLASS} value={channel} onChange={event => setChannel(event.target.value)}>
+                      <option value="">All {copy.scope.toLowerCase()}</option>
+                      {scopes.map(item => (
+                        <option key={item.id} value={item.id}>{item.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <Button disabled={building || Boolean(active)} onClick={() => void build()}>
                   {building ? "Building plan..." : plan ? "Build a new plan" : "Check for changes"}
                 </Button>
@@ -491,6 +580,40 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
                     </div>
                   )}
 
+                  {layout === "movies" && plan.overview.movies !== undefined && (
+                    <p className="text-muted-foreground">
+                      {plan.overview.movies.toLocaleString()} movie{plan.overview.movies === 1 ? "" : "s"} in this folder
+                      {plan.overview.skipped ? `, ${plan.overview.skipped} skipped (see notes above)` : ""}.
+                    </p>
+                  )}
+
+                  {(plan.overview.series?.length ?? 0) > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="text-left text-xs text-muted-foreground">
+                          <tr>
+                            <th className="py-1 pr-3">Show</th>
+                            <th className="py-1 pr-3">Folder</th>
+                            <th className="py-1 pr-3">Rating</th>
+                            <th className="py-1 pr-3">Episodes</th>
+                            <th className="py-1">Changes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.overview.series?.map(item => (
+                            <tr key={item.id} className="border-t">
+                              <td className="py-1 pr-3 font-medium">{item.title}</td>
+                              <td className="py-1 pr-3 text-muted-foreground">{item.folder}</td>
+                              <td className="py-1 pr-3">{item.rating || <Badge variant="destructive">No rating</Badge>}</td>
+                              <td className="py-1 pr-3">{item.episodes}</td>
+                              <td className="py-1">{item.pending || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   {(plan.overview.channels?.length ?? 0) > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -577,8 +700,11 @@ export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: strin
               <div className="space-y-1 rounded-lg border bg-muted/40 p-3 text-xs">
                 <p className="font-medium">In Jellyfin</p>
                 <ol className="list-decimal space-y-1 pl-4">
-                  <li>Add {selected.destination_path} as a <span className="font-medium">Shows</span> library.</li>
-                  <li>Keep the <span className="font-medium">Nfo</span> reader on and turn off the TubeArchivist plugin and online downloaders for it.</li>
+                  <li>Add {selected.destination_path} as a <span className="font-medium">{copy.server}</span> library.</li>
+                  <li>
+                    Keep the <span className="font-medium">Nfo</span> reader on and turn off online metadata downloaders
+                    {layout === "youtube_shows" ? " and the TubeArchivist plugin" : ""} for it, so the NFOs and their ratings are used.
+                  </li>
                   <li>Give your child&apos;s account access to this library, not the TubeArchivist one.</li>
                 </ol>
               </div>

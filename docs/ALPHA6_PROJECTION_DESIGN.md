@@ -1,6 +1,6 @@
 # 0.1.0-alpha.6 — Projection and Output Engine (design)
 
-Status: approved 16 November 2026. Phase 1 implemented.
+Status: approved 16 November 2026. Phases 1 and 2 implemented (see PROJECTIONS.md).
 
 This design adapts the reconstructed "LibraryForge Projection and Output Engine" document (ChatGPT, 16 November 2026) to how LibraryForge is used today and to an alpha-sized scope. Where this document differs from that one, this one is the plan, and the reason is given.
 

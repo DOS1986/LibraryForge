@@ -1093,6 +1093,26 @@ export async function createYouTubeShows(libraryId: string, destinationPath: str
 }
 
 
+// Every projection of a library, and creating one (layout follows the library's type).
+export async function getLibraryProjections(libraryId: string) {
+  return request<Projection[]>(`/api/libraries/${libraryId}/projections/`)
+}
+
+
+export async function createLibraryProjection(
+  libraryId: string,
+  input: {
+    destination_path: string
+    layout?: "movies" | "tv" | "youtube_shows"
+    link_mode: Projection["link_mode"]
+    hardlink_acknowledged: boolean
+  },
+) {
+  await ensureCsrf()
+  return request<Projection>(`/api/libraries/${libraryId}/projections/`, { method: "POST", body: JSON.stringify(input) })
+}
+
+
 // Projection settings (never touches disk).
 export async function updateProjection(
   projectionId: string,

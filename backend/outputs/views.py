@@ -214,3 +214,65 @@ def library_youtube_shows_view(request, library_id):
         generate_nfo=True,
     )
     return Response(ProjectionSerializer(projection).data, status=status.HTTP_201_CREATED)
+
+
+_LAYOUT_FOR_TYPE = {
+    "movies": Projection.Layout.MOVIES,
+    "tv": Projection.Layout.TV,
+    "online_video": Projection.Layout.YOUTUBE_SHOWS,
+}
+_DEFAULT_FOLDER = {
+    Projection.Layout.MOVIES: "Jellyfin movies",
+    Projection.Layout.TV: "Jellyfin TV shows",
+    Projection.Layout.YOUTUBE_SHOWS: "Jellyfin YouTube shows",
+}
+
+
+@api_view(["GET", "POST"])
+@permission_classes([permissions.IsAuthenticated])
+def library_projections_view(request, library_id):
+    """GET lists every projection of a library; POST creates one.
+
+    Body: ``destination_path``; optional ``name``, ``layout`` (required for a
+    mixed library: movies, tv, or youtube_shows), ``link_mode`` (hardlink,
+    copy, or symlink; hardlink by default), ``hardlink_acknowledged``, and
+    ``output_profile`` (defaults to your Jellyfin profile, created if needed).
+    """
+
+    library = get_object_or_404(Library, id=library_id, owner=request.user)
+    if request.method == "GET":
+        projections = Projection.objects.filter(library=library).select_related("library", "output_profile")
+        return Response(ProjectionSerializer(projections, many=True).data)
+
+    layout = _LAYOUT_FOR_TYPE.get(library.content_type) or str(request.data.get("layout") or "")
+    if layout not in Projection.Layout.values or layout == Projection.Layout.TEMPLATE:
+        raise ValidationError({"layout": "Choose a layout: movies, tv, or youtube_shows."})
+    link_mode = str(request.data.get("link_mode") or Projection.LinkMode.HARDLINK)
+    if link_mode not in Projection.LinkMode.values:
+        raise ValidationError({"link_mode": "Choose hardlink, copy, or symlink."})
+    destination = str(request.data.get("destination_path") or "").strip()
+    try:
+        validate_projection_destination(library=library, destination_path=destination, user=request.user)
+    except ProjectionSecurityError as exc:
+        raise ValidationError({"destination_path": str(exc)}) from exc
+    if Projection.objects.filter(destination_path__iexact=destination).exists():
+        raise ValidationError({"destination_path": "Another projection already writes to that folder."})
+
+    profile_id = request.data.get("output_profile")
+    if profile_id:
+        profile = get_object_or_404(OutputProfile, id=profile_id, owner=request.user)
+    else:
+        profile = (
+            OutputProfile.objects.filter(owner=request.user, target=OutputProfile.Target.JELLYFIN).order_by("name").first()
+        ) or OutputProfile.objects.create(owner=request.user, name="Jellyfin", target=OutputProfile.Target.JELLYFIN)
+    projection = Projection.objects.create(
+        library=library,
+        output_profile=profile,
+        name=" ".join(str(request.data.get("name") or _DEFAULT_FOLDER[layout]).split())[:255],
+        destination_path=destination,
+        layout=layout,
+        link_mode=link_mode,
+        hardlink_acknowledged=bool(request.data.get("hardlink_acknowledged")),
+        generate_nfo=True,
+    )
+    return Response(ProjectionSerializer(projection).data, status=status.HTTP_201_CREATED)

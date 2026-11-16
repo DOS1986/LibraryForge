@@ -11,6 +11,13 @@ pre-1.0 development.
 
 * Added a projection engine with stored plans and background runs. Checking a projection builds a plan you review: every change, findings, counts, and a 30-minute expiry. Applying it queues a run of exactly that plan in the background worker, with progress, cancellation, and a per-file journal that records each change before the disk is touched.
 * Added run history per projection, with results, problems, and journal details.
+* Added movie and TV projections for Jellyfin:
+  * Movies go in `Title (Year)` folders with their primary version, a movie NFO, and their selected artwork.
+  * Shows go in `Show (Year)` folders with tvshow.nfo, artwork, and `Season 01` folders. Episodes are named `Show S01E02 - Title` with episode NFOs (rated like their show when unrated) and thumbnails.
+  * Artwork is copied and refreshed when its source changes. Folder-name clashes get stable ID suffixes.
+  * No-file items, multi-episode files, overlong paths, and name collisions are skipped with notes.
+  * Plans can be limited to one show.
+* Added `GET/POST /api/libraries/<id>/projections/` for any layout. The Projections page now sets up and runs movie, TV, and online-video folders.
 * Added copy and symlink media policies for projections, alongside hardlinks.
 
 ### Changed
@@ -28,6 +35,7 @@ pre-1.0 development.
 
 ### Database
 
+* Added migration `outputs.0005_movie_tv_layouts`: `movies` and `tv` layouts, movie-NFO and artwork file kinds, a source fingerprint on managed files, and a group on plan actions. Additive only.
 * Added migrations `outputs.0003_projection_plans_and_runs` and `outputs.0004_projection_plan_overview`. They add projection plans, plan actions, runs, and the run journal; stale policy, hardlink acknowledgement, enabled, and preview flags on projections; and ownership and last run on managed files. Existing managed files are marked for verification and template projections are converted. Additive only.
 
 ## [0.1.0-alpha.5] - 2026-11-15

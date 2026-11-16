@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 
-import { YouTubeShowsPanel } from "@/components/projections/YouTubeShowsPanel"
+import { ProjectionPanel } from "@/components/projections/ProjectionPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,19 +56,19 @@ export function LibraryProjectionsPage() {
     }
   }
 
-  const online = library.content_type === "online_video" || library.content_type === "mixed"
+  const projectable = ["movies", "tv", "online_video", "mixed"].includes(library.content_type)
 
   return (
     <div className="space-y-6">
-      {online && <YouTubeShowsPanel libraryId={library.id} libraryPath={library.path} />}
-
-      {!online && (
+      {projectable ? (
+        <ProjectionPanel libraryId={library.id} libraryPath={library.path} contentType={library.content_type} />
+      ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Movie and TV projections</CardTitle>
+            <CardTitle>Projections</CardTitle>
             <CardDescription>
-              Organized Jellyfin, Emby, Kodi, and generic folders for movie and TV libraries come with the next alpha.6
-              update. They&apos;ll use the same reviewed plans, background runs, and history as the YouTube Shows folder.
+              Projections are available for movie, TV, online video, and mixed libraries. Set this library&apos;s content
+              type in its Settings to project it.
             </CardDescription>
           </CardHeader>
         </Card>

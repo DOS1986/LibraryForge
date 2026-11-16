@@ -12,8 +12,9 @@ disk. A **run** applies exactly one reviewed plan in the background worker:
   (a file is never adopted on its content alone);
 * runs can be cancelled between actions.
 
-Layouts supply the desired files and the file operations
-(``outputs.services.youtube_shows`` for online-video libraries in this phase).
+Layouts supply the desired files (``outputs.services.youtube_shows`` for
+online-video libraries, ``outputs.services.movies_tv`` for movies and TV);
+the shared file operations live in ``outputs.services.fileops``.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from outputs.models import (
     ProjectionRunAction,
 )
 from outputs.security import ProjectionSecurityError, validate_projection_destination
+from outputs.services import fileops, movies_tv
 from outputs.services import youtube_shows as shows
 
 PLAN_TTL = timedelta(minutes=int(os.environ.get("LIBRARYFORGE_PROJECTION_PLAN_MINUTES", "30") or 30))
@@ -51,6 +53,16 @@ MAX_PAGE_SIZE = 500
 
 Kind = ProjectionFile.Kind
 Action = ProjectionPlanAction.Action
+
+# Each layout plans its own files: plan(projection) -> actions, desired,
+# findings, overview; filter_scope(actions, scope_id) narrows to one group.
+LAYOUTS = {
+    Projection.Layout.YOUTUBE_SHOWS: shows,
+    Projection.Layout.MOVIES: movies_tv,
+    Projection.Layout.TV: movies_tv,
+}
+# Phase 2 renders movies and TV for Jellyfin; other profiles follow.
+PROFILE_TARGETS = {Projection.Layout.MOVIES: {"jellyfin"}, Projection.Layout.TV: {"jellyfin"}}
 
 # Findings that stop a plan from being applied.
 BLOCKING = "blocking"
@@ -80,8 +92,17 @@ def _finding(code: str, severity: str, message: str) -> dict[str, str]:
 def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
     findings = []
     library = projection.library
-    if projection.layout != Projection.Layout.YOUTUBE_SHOWS:
+    if projection.layout not in LAYOUTS:
         findings.append(_finding("UNSUPPORTED_LAYOUT", BLOCKING, "This projection's layout isn't supported yet."))
+    targets = PROFILE_TARGETS.get(projection.layout)
+    if targets and projection.output_profile.target not in targets:
+        findings.append(
+            _finding(
+                "PROFILE_NOT_SUPPORTED",
+                BLOCKING,
+                f"{projection.output_profile.get_target_display()} output for this layout isn't available yet; use a Jellyfin profile.",
+            )
+        )
     if not projection.enabled:
         findings.append(_finding("DISABLED", BLOCKING, "This projection is turned off. Turn it on to build a plan."))
     try:
@@ -108,7 +129,7 @@ def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
             )
     for code, problem in (
         ("SOURCE_UNAVAILABLE", secure_nfo.library_root_error(library)),
-        ("DESTINATION_UNAVAILABLE", shows.destination_error(projection)),
+        ("DESTINATION_UNAVAILABLE", fileops.destination_error(projection)),
     ):
         if problem:
             findings.append(_finding(code, BLOCKING, problem))
@@ -139,17 +160,17 @@ def verify_legacy_files(projection: Projection) -> dict[str, int]:
     verified, missing = [], []
     for row in rows:
         try:
-            path = shows._target(root, row.relative_path, create_parents=False)
+            path = fileops._target(root, row.relative_path, create_parents=False)
             if not path.exists():
                 missing.append(row.id)
                 continue
             if row.kind == Kind.VIDEO:
-                ok = row.media_file is not None and shows._matches_source(
-                    projection, shows._source(library_root, row.media_file), path
+                ok = row.media_file is not None and fileops._matches_source(
+                    projection, fileops._source(library_root, row.media_file), path
                 )
             else:
-                ok = shows._is_ours(path, row)
-        except (OSError, shows._Conflict):
+                ok = fileops._is_ours(path, row)
+        except (OSError, fileops._Conflict):
             ok = False
         if ok:
             verified.append(row.id)
@@ -190,7 +211,7 @@ def _guard(projection: Projection, actions: list, desired_files: set) -> tuple[l
     for action in actions:
         row = action.row
         source_gone = (
-            action.action == shows.ACTION_DELETE
+            action.action == fileops.ACTION_DELETE
             and row is not None
             and row.media_file_id is not None
             and row.media_file_id not in desired_files
@@ -212,6 +233,8 @@ def _desired_json(desired) -> dict[str, Any]:
         "episode": desired.episode,
         "stream_index": desired.stream_index,
         "source_size": desired.media_file.size_bytes if desired.media_file else None,
+        "source_path": desired.source_path,
+        "fingerprint": desired.fingerprint,
     }
 
 
@@ -222,11 +245,13 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
     overview: dict[str, Any] = {}
     if not any(finding["severity"] == BLOCKING for finding in findings):
         legacy = verify_legacy_files(projection)
-        planned = shows._plan(projection)
+        layout = LAYOUTS[projection.layout]
+        planned = layout.plan(projection)
+        findings.extend(planned.get("findings") or [])
         desired_files = {item.media_file.id for item in planned["desired"] if item.media_file is not None}
-        actions, guard_findings = _guard(projection, shows._filtered(planned["actions"], channel), desired_files)
+        actions, guard_findings = _guard(projection, layout.filter_scope(planned["actions"], channel), desired_files)
         findings.extend(guard_findings)
-        overview = _shows_overview(projection, planned, actions)
+        overview = planned.get("overview") or {}
     if legacy.get("unverified"):
         findings.append(
             _finding(
@@ -260,6 +285,8 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
                     {"size": row.size_bytes, "sha256": row.content_sha256, "kind": row.kind} if row is not None else {"exists": False}
                 ),
                 desired=_desired_json(desired),
+                group_id=str(action.group_id or "")[:64],
+                group_title=str(action.group_title or "")[:1024],
                 content=content,
                 content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest() if content else "",
                 reason=_reason(action),
@@ -296,34 +323,6 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
         if projection.needs_preview and status == ProjectionPlan.Status.READY:
             Projection.objects.filter(pk=projection.pk).update(needs_preview=False)
     return plan
-
-
-def _shows_overview(projection: Projection, planned: dict[str, Any], actions: list) -> dict[str, Any]:
-    pending: dict[str, int] = {}
-    videos: dict[str, int] = {}
-    files: dict[str, int] = {}
-    for action in planned["actions"]:
-        if action.channel and action.action != Action.RETAIN:
-            pending[str(action.channel.id)] = pending.get(str(action.channel.id), 0) + 1
-    for item in planned["desired"]:
-        files[item.kind] = files.get(item.kind, 0) + 1
-        if item.kind == Kind.VIDEO:
-            videos[str(item.channel.id)] = videos.get(str(item.channel.id), 0) + 1
-    return {
-        "artwork_available": planned["has_artwork"],
-        "files": files,
-        "channels": [
-            {
-                "id": str(channel.id),
-                "title": channel.title,
-                "folder": planned["names"][channel.id],
-                "rating": channel.content_rating,
-                "videos": videos.get(str(channel.id), 0),
-                "pending": pending.get(str(channel.id), 0),
-            }
-            for channel in planned["channels"]
-        ],
-    }
 
 
 def _reason(action) -> str:
@@ -369,8 +368,8 @@ def action_rows(queryset, *, page: Any = None, page_size: Any = None, action: st
                 "action": row.action,
                 "kind": row.kind,
                 "path": row.relative_path,
-                "channel": row.channel.title if getattr(row, "channel", None) else "",
-                "channel_id": str(row.channel_id) if getattr(row, "channel_id", None) else None,
+                "group": getattr(row, "group_title", "") or (row.channel.title if getattr(row, "channel", None) else ""),
+                "group_id": getattr(row, "group_id", "") or (str(row.channel_id) if getattr(row, "channel_id", None) else None),
                 "reason": row.reason,
             }
             for row in rows
@@ -511,7 +510,7 @@ def recover_interrupted_runs(live_worker_ids: set[str]) -> int:
 def _rebuild(projection: Projection, record: ProjectionPlanAction):
     desired = None
     if record.action != Action.DELETE and record.kind != "artwork":
-        desired = shows.Desired(
+        desired = fileops.Desired(
             path=record.relative_path,
             kind=record.kind,
             channel=record.channel,
@@ -520,8 +519,15 @@ def _rebuild(projection: Projection, record: ProjectionPlanAction):
             season=record.desired.get("season"),
             episode=record.desired.get("episode"),
             stream_index=record.desired.get("stream_index"),
+            source_path=record.desired.get("source_path") or "",
+            fingerprint=record.desired.get("fingerprint") or "",
+            group_id=record.group_id,
+            group_title=record.group_title,
         )
-    return shows.Action(record.action, record.kind, record.relative_path, record.channel, desired, record.manifest_file)
+    return fileops.Action(
+        record.action, record.kind, record.relative_path, record.channel, desired, record.manifest_file,
+        group_id=record.group_id, group_title=record.group_title,
+    )
 
 
 def _precondition_problem(record: ProjectionPlanAction) -> str:
@@ -584,7 +590,7 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
         return finish(ProjectionRun.Status.FAILED, blocking[0]["message"])
     try:
         library_root = Path(projection.library.path).expanduser().resolve(strict=True)
-        root = shows._destination_root(projection)
+        root = fileops._destination_root(projection)
     except (OSError, MatchRequestError) as error:
         return finish(ProjectionRun.Status.FAILED, getattr(error, "message", None) or secure_nfo.library_root_problem(error))
 
@@ -609,7 +615,7 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
         else:
             try:
                 with transaction.atomic():
-                    result = shows._apply(
+                    result = fileops._apply(
                         projection,
                         root,
                         library_root,
@@ -622,7 +628,7 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
                 state, message = ProjectionRunAction.State.DONE, ""
                 if result == "kept":
                     message = "Changed outside LibraryForge, so it was left in place."
-            except shows._CrossDevice:
+            except fileops._CrossDevice:
                 journal.state, journal.result = ProjectionRunAction.State.FAILED, "failed"
                 journal.message = "Hardlinks can't cross volumes."
                 journal.save()
@@ -631,7 +637,7 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
                     "Hardlinks can't be made here: the output folder has to be on the same share and volume as the "
                     "library. Choose a destination next to the library folder, or use copies.",
                 )
-            except shows._Conflict as error:
+            except fileops._Conflict as error:
                 result, state, message = "conflict", ProjectionRunAction.State.SKIPPED, str(error)
             except OSError as error:
                 result, state, message = "failed", ProjectionRunAction.State.FAILED, error.strerror or str(error)

@@ -95,6 +95,18 @@ class Projection(models.Model):
             "Channels as TV shows",
         )
 
+        # Movie (Year)/Movie (Year).ext with NFO and artwork.
+        MOVIES = (
+            "movies",
+            "Movies",
+        )
+
+        # Show (Year)/Season 01/Show S01E02 - Title.ext with NFOs and artwork.
+        TV = (
+            "tv",
+            "TV shows",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -278,6 +290,9 @@ class ProjectionFile(models.Model):
         SHOW_NFO = ("show_nfo", "Show NFO")
         POSTER = ("poster", "Show poster")
         FANART = ("fanart", "Show fanart")
+        MOVIE_NFO = ("movie_nfo", "Movie NFO")
+        # Artwork copied from the library (poster, fanart, logo, season art, episode thumbs).
+        ART = ("art", "Artwork")
 
     id = models.UUIDField(
         primary_key=True,
@@ -334,6 +349,14 @@ class ProjectionFile(models.Model):
     # SHA-256 of a file LibraryForge wrote (blank for video links).
     content_sha256 = models.CharField(
         max_length=64,
+        blank=True,
+        default="",
+    )
+
+    # What the file was made from (an artwork file's path, size, and time), so
+    # a changed source is noticed without reading it.
+    source_fingerprint = models.CharField(
+        max_length=512,
         blank=True,
         default="",
     )
@@ -437,6 +460,9 @@ class ProjectionPlanAction(models.Model):
     channel = models.ForeignKey("catalog.Channel", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     media_file = models.ForeignKey("media.MediaFile", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     manifest_file = models.ForeignKey(ProjectionFile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # The movie, series, or channel an action belongs to (for scoping and display).
+    group_id = models.CharField(max_length=64, blank=True, default="")
+    group_title = models.CharField(max_length=1024, blank=True, default="")
     # What the target looked like when planned (manifest size/hash) and what it should become.
     expected = models.JSONField(default=dict, blank=True)
     desired = models.JSONField(default=dict, blank=True)
