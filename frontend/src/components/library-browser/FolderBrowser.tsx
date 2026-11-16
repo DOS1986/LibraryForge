@@ -406,7 +406,7 @@ export function FolderBrowser({
           flex-wrap
           items-center
           gap-1
-          rounded-md
+          rounded-lg
           border
           bg-muted/30
           px-3
@@ -414,6 +414,9 @@ export function FolderBrowser({
           text-sm
         "
       >
+        {!data && (
+          <span className="text-muted-foreground">Loading folder...</span>
+        )}
         {
           data?.breadcrumbs.map(
             (

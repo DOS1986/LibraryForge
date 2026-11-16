@@ -3,8 +3,7 @@ import {
   useState,
 } from "react"
 
-import { Link } from "react-router-dom"
-
+import { PageHeader } from "@/components/app/PageHeader"
 import {
   Button,
 } from "@/components/ui/button"
@@ -155,26 +154,14 @@ export function SettingsPage() {
 
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Settings</CardTitle>
-              <CardDescription>
-                These preferences are stored with your LibraryForge user account and follow you between browsers.
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/settings" className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">General</Link>
-              <Link to="/settings/integrations" className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">Integrations</Link>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+    <div className="max-w-3xl space-y-6">
+      <PageHeader
+        title="Settings"
+        description="These preferences are stored with your LibraryForge account and follow you between browsers. Theme and density are set per browser from the appearance menu in the top bar."
+      />
 
       {(error || saveError) && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3 text-sm text-destructive">
           {saveError || error}
         </div>
       )}
@@ -260,7 +247,7 @@ export function SettingsPage() {
                 Show build information
               </div>
               <div className="text-sm text-muted-foreground">
-                Keep the frontend/backend build card visible in the main navigation.
+                Show the frontend/backend build card on the Dashboard.
               </div>
             </div>
             <input

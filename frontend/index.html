@@ -4,7 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141110" media="(prefers-color-scheme: dark)" />
+    <title>LibraryForge</title>
+    <script>
+      // Apply the saved theme and density before the app loads (no flash).
+      // Keys match src/lib/theme.tsx.
+      (function () {
+        try {
+          var mode = localStorage.getItem("libraryforge.theme") || "system"
+          var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+          var root = document.documentElement
+          if (dark) root.classList.add("dark")
+          root.style.colorScheme = dark ? "dark" : "light"
+          root.dataset.density = localStorage.getItem("libraryforge.density") === "compact" ? "compact" : "comfortable"
+        } catch (error) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

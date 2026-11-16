@@ -117,6 +117,8 @@ class IntegrationConnectionSerializer(serializers.ModelSerializer):
 class LibraryIntegrationSerializer(serializers.ModelSerializer):
     connection_name = serializers.CharField(source="connection.name", read_only=True)
     provider = serializers.CharField(source="connection.provider", read_only=True)
+    # Set through provider-specific endpoints (for example the Jellyfin link).
+    options = serializers.JSONField(read_only=True)
     provider_label = serializers.SerializerMethodField()
     credential_mode = serializers.SerializerMethodField()
     credential_summary = serializers.SerializerMethodField()
@@ -142,6 +144,7 @@ class LibraryIntegrationSerializer(serializers.ModelSerializer):
             "enabled",
             "priority",
             "capabilities",
+            "options",
             "credential_mode",
             "credential_summary",
             "created_at",

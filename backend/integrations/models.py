@@ -62,6 +62,9 @@ class LibraryIntegration(models.Model):
     enabled = models.BooleanField(default=True, db_index=True)
     priority = models.PositiveIntegerField(default=100)
     capabilities = models.JSONField(default=list, blank=True)
+    # Provider-specific link settings, such as which Jellyfin library this
+    # LibraryForge library corresponds to ({"jellyfin_library_id": ...}).
+    options = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -471,6 +471,7 @@ export type ScanJobStatus =
   | "completed"
   | "completed_with_errors"
   | "failed"
+  | "cancelled"
 
 export interface ScanJob {
   id: string
@@ -478,6 +479,11 @@ export interface ScanJob {
   library_name: string
   status: ScanJobStatus
   status_label: string
+  // Queued, and no scan worker is running to pick it up.
+  waiting_for_worker: boolean
+  // Looks active, but the worker running it has stopped.
+  stalled: boolean
+  cancel_requested: boolean
   total_files: number
   processed_files: number
   total_media_files: number
@@ -605,6 +611,7 @@ export interface Projection {
   output_target: string
   name: string
   destination_path: string
+  layout: "template" | "youtube_shows"
   link_mode:
     | "symlink"
     | "hardlink"
@@ -615,6 +622,167 @@ export interface Projection {
   last_run_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface EditorFieldState {
+  field_name: string
+  source: string
+  source_label: string
+  locked: boolean
+}
+
+export interface EditorHistoryEntry {
+  id: string
+  source: string
+  source_label: string
+  changes: Record<string, { old: unknown; new: unknown }>
+  note: string
+  created_at: string
+}
+
+export interface OnlineVideoEditorDetail {
+  kind: "online_video"
+  id: string
+  library_id: string
+  provider: string
+  source_id: string
+  source_url: string
+  title: string
+  description: string
+  content_rating: string
+  upload_date: string | null
+  video_kind: string
+  video_kind_label: string
+  tags: string[]
+  channel: { id: string; title: string; content_rating: string } | null
+  files: string[]
+  field_states: EditorFieldState[]
+  history: EditorHistoryEntry[]
+}
+
+export interface ChannelEditorDetail {
+  kind: "channel"
+  id: string
+  library_id: string
+  provider: string
+  source_id: string
+  source_url: string
+  handle: string
+  title: string
+  sort_title: string
+  description: string
+  content_rating: string
+  video_count: number
+  field_states: EditorFieldState[]
+  history: EditorHistoryEntry[]
+}
+
+export type NfoSyncKind = "movies" | "series" | "episodes"
+export type NfoFieldStatus = "same" | "different" | "missing" | "empty" | "nfo_only"
+
+export interface NfoFieldRow {
+  tag: string
+  label: string
+  list: boolean
+  libraryforge: string | string[]
+  nfo: string | string[] | null
+  status: NfoFieldStatus
+}
+
+export interface NfoComparison {
+  kind: "movie" | "series" | "episode"
+  id: string
+  title: string
+  nfo: { exists: boolean; id: string | null; path: string | null; root_element: string }
+  problem: string | null
+  writable: boolean
+  root_error: string | null
+  fields: NfoFieldRow[]
+}
+
+export interface NfoWriteResult {
+  result: "created" | "updated" | "unchanged"
+  path: string
+  written: string[]
+  comparison: NfoComparison
+}
+
+export interface NfoCreatePreview {
+  library_id: string
+  kind: "movie" | "series"
+  writable: boolean
+  root_error: string | null
+  missing: number
+  ready: number
+  blocked: number
+  rows: { id: string; title: string; path: string; problem: string }[]
+  rows_truncated: boolean
+}
+
+export interface NfoCreateBatch {
+  created: number
+  problems: { title: string; path: string; message: string }[]
+  next_cursor: string | null
+  remaining: number
+}
+
+export type ShowsAction = "create" | "update" | "relink" | "replace" | "delete" | "artwork"
+
+export type ShowsResult =
+  | "created"
+  | "updated"
+  | "relinked"
+  | "deleted"
+  | "artwork"
+  | "adopted"
+  | "kept"
+  | "conflict"
+  | "failed"
+
+export interface ShowsPlannedChange {
+  action: ShowsAction
+  kind: string
+  path: string
+  channel_id: string | null
+  channel: string
+}
+
+export interface ShowsPlan {
+  projection_id: string
+  destination_path: string
+  channel: string | null
+  source_error: string | null
+  destination_error: string | null
+  artwork_available: boolean
+  summary: Record<ShowsAction, number>
+  pending: number
+  files: Record<string, number>
+  managed_files: number
+  channels: {
+    id: string
+    title: string
+    folder: string
+    rating: string
+    videos: number
+    pending: number
+  }[]
+  actions: ShowsPlannedChange[]
+  actions_truncated: boolean
+  last_run_at: string | null
+}
+
+export interface ShowsProblem extends ShowsPlannedChange {
+  result: ShowsResult
+  message: string
+}
+
+export interface ShowsSyncBatch {
+  projection_id: string
+  counts: Record<ShowsResult, number>
+  problems: ShowsProblem[]
+  error: string | null
+  next_cursor: string | null
+  remaining: number
 }
 
 export interface ProjectionPreviewItem {
@@ -690,6 +858,7 @@ export interface CanonicalFieldState {
     | "tubearchivist"
     | "yt_dlp"
     | "system"
+    | "provider"
   source_label: string
   source_ref: string
   value_snapshot: unknown
@@ -711,7 +880,9 @@ export interface MetadataChangeSet {
   source:
     | "manual"
     | "system"
+    | "provider"
   source_label: string
+  source_ref?: string
   changes: Record<
     string,
     {
@@ -939,4 +1110,435 @@ export interface SystemStatus {
 export interface RestartRequestResult {
   accepted: boolean
   runtime_started_at: string
+}
+
+
+// Metadata provider matching (read-only search and preview)
+
+export type MetadataMatchKind = "movie" | "series"
+
+export interface MetadataMatchTarget {
+  type: MetadataMatchKind
+  id: string
+  library_id: string
+  title: string
+  year: number | null
+}
+
+export interface MetadataMatchConnection {
+  connection_id: string
+  connection_name: string
+  provider: string
+  provider_label: string
+  status: string
+  available: boolean
+  reason: string
+  attribution: string
+}
+
+export interface MetadataMatchContext {
+  target: MetadataMatchTarget
+  connections: MetadataMatchConnection[]
+  search_defaults: {
+    query: string
+    year: number | null
+    original_title: string
+  }
+}
+
+export interface MetadataExternalId {
+  namespace: string
+  value: string
+}
+
+export type MetadataMatchTier =
+  | "strong"
+  | "likely"
+  | "possible"
+  | "weak"
+  | "conflict"
+
+export interface MetadataMatchReason {
+  code: string
+  label: string
+  tone: "positive" | "neutral" | "warning"
+}
+
+export interface MetadataMatchCandidate {
+  provider: string
+  target_type: MetadataMatchKind
+  source_id: string
+  title: string
+  original_title: string
+  release_date: string | null
+  year: number | null
+  overview: string
+  artwork_url: string
+  external_ids: MetadataExternalId[]
+  match: {
+    tier: MetadataMatchTier
+    reasons: MetadataMatchReason[]
+  }
+}
+
+export interface MetadataMatchSearchResult {
+  target: MetadataMatchTarget
+  connection: MetadataMatchConnection
+  query: string
+  year: number | null
+  page: number
+  next_page: number | null
+  results: MetadataMatchCandidate[]
+}
+
+export type MetadataPreviewStatus =
+  | "unchanged"
+  | "fill"
+  | "different"
+  | "add"
+  | "conflict"
+  | "missing"
+  | "locked"
+
+export interface MetadataPreviewField {
+  field: string
+  label: string
+  group: "identity" | "descriptive" | "relationships" | "external_ids"
+  kind: "text" | "longtext" | "date" | "year" | "rating" | "list" | "external_id"
+  current: unknown
+  proposed: unknown
+  status: MetadataPreviewStatus
+  selectable: boolean
+  default_selected: boolean
+  locked: boolean
+  current_source: string | null
+  note: string
+  additions?: string[]
+  result?: string[]
+  linked_fields?: string[]
+  linked_to?: string
+  territory?: string
+  namespace?: string
+  // True when the proposed rating was estimated from other countries' ratings.
+  estimated?: boolean
+  estimate?: RatingEstimate | null
+}
+
+export interface RatingEstimate {
+  value: string
+  age: number
+  basis: { territory: string; rating: string; age: number }[]
+}
+
+export interface MetadataPreviewArtwork {
+  url: string
+  kind: "poster" | "backdrop" | "logo" | "banner" | "thumbnail" | "other"
+  width: number | null
+  height: number | null
+  language: string | null
+  thumbnail_url: string
+}
+
+export type ArtworkTypeKey = "primary" | "backdrop" | "logo" | "banner" | "thumb"
+
+export interface ArtworkSource {
+  connection_id: string
+  connection_name: string
+  provider: string
+  provider_label: string
+  // "details": comes with a matched title; "ids": looked up by TMDB/IMDb/TVDB ID.
+  mode: "details" | "ids"
+  id_namespaces: string[]
+  attribution: string
+}
+
+export interface ArtworkChoice extends MetadataPreviewArtwork {
+  artwork_type: ArtworkTypeKey
+  file_name: string
+}
+
+export interface ArtworkChoices {
+  target: MetadataMatchTarget
+  sources: ArtworkSource[]
+  connection: ArtworkSource | null
+  writable: boolean
+  root_error: string | null
+  folder: string | null
+  folder_error: string | null
+  current: Record<ArtworkTypeKey, CatalogEditorArtwork | null>
+  items: ArtworkChoice[]
+}
+
+export interface ArtworkSaveResult {
+  replayed: boolean
+  artwork_type: ArtworkTypeKey
+  path: string
+  backups: { from: string; to: string }[]
+  artwork: CatalogEditorArtwork | null
+  change_set_id: string
+}
+
+export interface MetadataMatchPreview {
+  target: MetadataMatchTarget
+  connection: MetadataMatchConnection
+  source_id: string
+  territory: string
+  provider_metadata: {
+    title: string
+    original_title: string
+    year: number | null
+    overview: string
+    artwork: MetadataPreviewArtwork[]
+    [key: string]: unknown
+  }
+  fields: MetadataPreviewField[]
+  not_stored: { label: string; value: string; note: string }[]
+  summary: Partial<Record<MetadataPreviewStatus, number>>
+  target_revision: string
+  provider_snapshot: string
+}
+
+export interface MetadataMatchApplyRequest {
+  connection: string
+  source_id: string
+  territory: string
+  fields: string[]
+  target_revision: string
+  provider_snapshot: string
+  operation_id: string
+}
+
+export interface MetadataMatchApplyResult {
+  applied: boolean
+  replayed: boolean
+  change_set: {
+    id: string
+    source: string
+    source_ref: string
+    operation_id: string | null
+    fields: string[]
+    changes: Record<string, { old: unknown; new: unknown }>
+    note: string
+    created_at: string
+  }
+  detail: CatalogEditorDetail
+}
+
+
+// Library content-rating coverage and suggestions
+
+export type RatingStatus = "rated" | "missing" | "unrecognized"
+
+// Online-video channels are rated like TV series.
+export type RatingKind = MetadataMatchKind | "channel"
+
+export interface RatingKindInfo {
+  kind: RatingKind
+  label: string
+  total: number
+  provider_suggestions: boolean
+  nfo: boolean
+  youtube_hints: boolean
+}
+
+export type YouTubeHintStatus = "hint" | "no_signal" | "not_found" | "not_youtube"
+export type YouTubeHintAction = "set" | "change" | "unchanged" | "locked"
+
+export interface YouTubeRatingHint {
+  id: string
+  title: string
+  source_id: string
+  current: string
+  current_source: string | null
+  action: YouTubeHintAction | null
+  status: YouTubeHintStatus
+  rating: string
+  reason: string
+  note: string
+  stats: {
+    channel_found?: boolean
+    channel_made_for_kids?: boolean | null
+    videos_checked?: number
+    videos_made_for_kids?: number
+    videos_age_restricted?: number
+  }
+}
+
+export interface YouTubeRatingHints {
+  library_id: string
+  connection: { connection_id: string; connection_name: string; provider: string; provider_label: string }
+  results: YouTubeRatingHint[]
+}
+
+export type YouTubeHintApplyOutcome = "applied" | "unchanged" | "locked" | "changed"
+
+export interface YouTubeHintApplyResult {
+  library_id: string
+  counts: Record<YouTubeHintApplyOutcome, number>
+  results: { id: string; title: string; rating: string; result: YouTubeHintApplyOutcome }[]
+}
+
+export interface RatingCounts {
+  total: number
+  rated: number
+  missing: number
+  unrecognized: number
+}
+
+export interface RatingCoverageRow {
+  kind: RatingKind
+  id: string
+  title: string
+  year: number | null
+  content_rating: string
+  status: RatingStatus
+  source: string | null
+  source_label: string | null
+  locked: boolean
+}
+
+export interface RatingCoverage {
+  library_id: string
+  kind: RatingKind
+  status: RatingStatus | "all"
+  summary: Record<RatingKind, RatingCounts>
+  recognized_ratings: { movie: string[]; tv: string[] }
+  kinds: RatingKindInfo[]
+  page: number
+  page_size: number
+  total: number
+  next_page: number | null
+  results: RatingCoverageRow[]
+}
+
+export type RatingSuggestionStatus =
+  | "suggested"
+  | "estimated"
+  | "needs_review"
+  | "no_rating"
+  | "locked"
+  | "unchanged"
+  | "error"
+
+export interface RatingSuggestion {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  year: number | null
+  content_rating: string
+  status: RatingSuggestionStatus
+  message: string
+  candidate?: MetadataMatchCandidate | null
+  rating?: string | null
+  territory?: string
+  estimate?: RatingEstimate | null
+  // Which provider this result came from, and which were tried in order.
+  provider?: string
+  provider_label?: string
+  tried?: string[]
+  apply?: Omit<MetadataMatchApplyRequest, "operation_id">
+}
+
+export interface RatingSuggestions {
+  library_id: string
+  kind: MetadataMatchKind
+  connection: MetadataMatchConnection
+  connections?: MetadataMatchConnection[]
+  results: RatingSuggestion[]
+}
+
+
+// Importing ratings from indexed NFO files
+
+export type NfoImportAction =
+  | "set"
+  | "update"
+  | "unchanged"
+  | "conflict"
+  | "locked"
+  | "nfo_disagree"
+  | "no_rating_in_nfo"
+  | "no_nfo"
+
+export interface NfoImportRow {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  current: string
+  current_source: string | null
+  nfo_rating: string
+  nfo_path: string
+  action: NfoImportAction
+  other_values?: string[]
+}
+
+export interface NfoImportPreview {
+  library_id: string
+  kind: MetadataMatchKind
+  total: number
+  summary: Record<NfoImportAction, number>
+  rows: NfoImportRow[]
+  rows_truncated: boolean
+  written?: number
+}
+
+
+// Writing catalog ratings into existing NFO files
+
+export type NfoExportAction = "write" | "add" | "unchanged" | "no_nfo" | "unrated"
+
+export interface NfoExportRow {
+  kind: MetadataMatchKind
+  id: string
+  title: string
+  rating: string
+  action: NfoExportAction
+  nfo_path: string
+  nfo_rating: string
+}
+
+export interface NfoExportPreview {
+  library_id: string
+  kind: MetadataMatchKind
+  writable: boolean
+  management_mode: ManagementMode
+  root_error: string | null
+  summary: Record<NfoExportAction, number>
+  files_to_write: number
+  rows: NfoExportRow[]
+  rows_truncated: boolean
+}
+
+export interface NfoExportProblem {
+  title: string
+  nfo_path: string
+  rating: string
+  previous: string
+  result: "changed_on_disk" | "failed"
+  message: string
+}
+
+export interface NfoExportBatch {
+  library_id: string
+  kind: MetadataMatchKind
+  counts: { written: number; changed_on_disk: number; failed: number }
+  problems: NfoExportProblem[]
+  next_cursor: string | null
+  remaining: number
+}
+
+
+export interface ScanWorkerStatus {
+  alive: boolean
+  stale_after_seconds: number
+  workers: {
+    id: string
+    hostname: string
+    pid: number
+    started_at: string
+    last_seen_at: string
+    current_job: string | null
+    current_library: string | null
+  }[]
+  queued_jobs: number
 }

@@ -24,6 +24,10 @@ import {
 } from "@/components/auth/LoginScreen"
 
 import {
+  LogoMark,
+} from "@/components/brand/Logo"
+
+import {
   getMe,
 } from "@/lib/api"
 
@@ -70,6 +74,10 @@ import {
 import {
   LibraryNeedsAttentionPage,
 } from "@/pages/libraries/LibraryNeedsAttentionPage"
+
+import {
+  LibraryRatingsPage,
+} from "@/pages/libraries/LibraryRatingsPage"
 
 import {
   LibraryOverviewPage,
@@ -153,8 +161,9 @@ function App() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        Loading LibraryForge...
+      <main className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background text-muted-foreground" role="status">
+        <LogoMark className="size-12 animate-pulse" />
+        <span className="text-sm">Loading LibraryForge...</span>
       </main>
     )
   }
@@ -248,6 +257,11 @@ function App() {
               <Route
                 path="attention"
                 element={<LibraryNeedsAttentionPage />}
+              />
+
+              <Route
+                path="ratings"
+                element={<LibraryRatingsPage />}
               />
 
               <Route

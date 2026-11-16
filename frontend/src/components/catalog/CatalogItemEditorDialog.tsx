@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
+import { NfoSyncPanel } from "@/components/catalog/NfoSyncPanel"
 
 import {
   Badge,
@@ -39,6 +40,14 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+
+import {
+  MetadataMatchPanel,
+} from "@/components/catalog/MetadataMatchPanel"
+
+import {
+  RatingCombobox,
+} from "@/components/ratings/RatingCombobox"
 
 import {
   ScrollableDialogBody,
@@ -87,6 +96,16 @@ interface CatalogItemEditorDialogProps {
   onChanged?:
     () => Promise<void>
     | void
+
+  // Tab to open first, for example "match".
+  initialTab?: string
+
+  // Options for the Match tab when opened for a quick rating.
+  matchOptions?: {
+    autoSearch?: boolean
+    quickRating?: boolean
+    onRatingSaved?: (rating: string) => void
+  }
 }
 
 
@@ -872,13 +891,42 @@ function MetadataEditor({
           detail.kind
           !== "season"
           && (
-            <TextField
-              label="Content Rating"
-              fieldName="content_rating"
-              form={form}
-              setForm={setForm}
-              states={states}
-            />
+            <div
+              className="block"
+            >
+              <label
+                htmlFor="metadata-content-rating"
+              >
+                <FieldLabel
+                  label="Content Rating"
+                  fieldName="content_rating"
+                  states={states}
+                />
+              </label>
+
+              <RatingCombobox
+                id="metadata-content-rating"
+                prefer={
+                  detail.kind === "movie"
+                    ? "movie"
+                    : "tv"
+                }
+                value={
+                  form.content_rating
+                  ?? ""
+                }
+                onChange={
+                  value =>
+                    setForm(
+                      current => ({
+                        ...current,
+                        content_rating:
+                          value,
+                      })
+                    )
+                }
+              />
+            </div>
           )
         }
 
@@ -2284,6 +2332,8 @@ export function CatalogItemEditorDialog({
   id,
   onClose,
   onChanged,
+  initialTab,
+  matchOptions,
 }: CatalogItemEditorDialogProps) {
   const [
     detail,
@@ -2532,7 +2582,13 @@ export function CatalogItemEditorDialog({
             detail
             && (
               <Tabs
-                defaultValue="overview"
+                defaultValue={
+                  initialTab === "match"
+                  && detail.kind !== "movie"
+                  && detail.kind !== "series"
+                    ? "overview"
+                    : initialTab ?? "overview"
+                }
               >
                 <TabsList
                   className="
@@ -2551,6 +2607,20 @@ export function CatalogItemEditorDialog({
                   >
                     Metadata
                   </TabsTrigger>
+
+                  {
+                    (
+                      detail.kind === "movie"
+                      || detail.kind === "series"
+                    )
+                    && (
+                      <TabsTrigger
+                        value="match"
+                      >
+                        Match
+                      </TabsTrigger>
+                    )
+                  }
 
                   {
                     detail.versions.length
@@ -2733,6 +2803,40 @@ export function CatalogItemEditorDialog({
                   />
                 </TabsContent>
 
+                {
+                  (
+                    detail.kind === "movie"
+                    || detail.kind === "series"
+                  )
+                  && (
+                    <TabsContent
+                      value="match"
+                      className="mt-5"
+                    >
+                      <MetadataMatchPanel
+                        kind={detail.kind}
+                        id={detail.id}
+                        autoSearch={matchOptions?.autoSearch}
+                        quickRating={matchOptions?.quickRating}
+                        onRatingSaved={
+                          matchOptions?.onRatingSaved
+                            ? rating => matchOptions.onRatingSaved?.(rating)
+                            : undefined
+                        }
+                        onApplied={
+                          updated => {
+                            setDetail(
+                              updated
+                            )
+
+                            void onChanged?.()
+                          }
+                        }
+                      />
+                    </TabsContent>
+                  )
+                }
+
                 <TabsContent
                   value="versions"
                   className="
@@ -2778,8 +2882,15 @@ export function CatalogItemEditorDialog({
 
                 <TabsContent
                   value="nfo"
-                  className="mt-5"
+                  className="mt-5 space-y-5"
                 >
+                  {detail.kind !== "season" && (
+                    <NfoSyncPanel
+                      kind={detail.kind}
+                      id={detail.id}
+                      onWritten={refreshAfterChange}
+                    />
+                  )}
                   <NfoTab
                     detail={detail}
                     onChanged={

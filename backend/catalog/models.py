@@ -399,6 +399,14 @@ class Channel(models.Model):
         default="",
     )
 
+    # Parental rating for the whole channel (shown as a TV series in media
+    # servers). Videos inherit it unless they have their own.
+    content_rating = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
     source_url = models.TextField(
         blank=True,
         default="",
@@ -954,6 +962,11 @@ class CanonicalFieldState(models.Model):
             "System",
         )
 
+        PROVIDER = (
+            "provider",
+            "Metadata Provider",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -1057,6 +1070,11 @@ class MetadataChangeSet(models.Model):
             "System",
         )
 
+        PROVIDER = (
+            "provider",
+            "Metadata Provider",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -1097,6 +1115,29 @@ class MetadataChangeSet(models.Model):
         null=True,
         blank=True,
         related_name="metadata_change_sets",
+    )
+
+    # Provider provenance, e.g. "tmdb:movie:603". Empty for manual edits.
+    source_ref = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    # Client-supplied idempotency key for a provider apply. A repeated
+    # submission with the same key returns this change set instead of
+    # applying twice.
+    operation_id = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+    )
+
+    # Secret-free apply context: provider, connection reference, source ID,
+    # retrieval time, and the fingerprints of the reviewed preview.
+    details = models.JSONField(
+        default=dict,
+        blank=True,
     )
 
     created_at = models.DateTimeField(

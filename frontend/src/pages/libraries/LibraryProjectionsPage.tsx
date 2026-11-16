@@ -29,6 +29,8 @@ import {
   Label,
 } from "@/components/ui/label"
 
+import { YouTubeShowsPanel } from "@/components/projections/YouTubeShowsPanel"
+
 import {
   createOutputProfile,
   createProjection,
@@ -170,8 +172,11 @@ export function LibraryProjectionsPage() {
           profileResult
         )
 
+        // Channels as TV shows folders have their own panel above.
         setProjections(
-          projectionResult
+          projectionResult.filter(
+            item => item.layout !== "youtube_shows"
+          )
         )
 
         setOutputProfileId(
@@ -288,6 +293,10 @@ export function LibraryProjectionsPage() {
         space-y-6
       "
     >
+      {(library.content_type === "online_video" || library.content_type === "mixed") && (
+        <YouTubeShowsPanel libraryId={library.id} libraryPath={library.path} />
+      )}
+
       {error && (
         <div
           className="

@@ -19,6 +19,9 @@ from urllib.request import (
 from integrations.providers.http import (
     ProviderHttpError,
 )
+from metadata.providers.types import (
+    MetadataProviderError,
+)
 
 
 PUBLIC_IMAGE_HOST_SUFFIXES = (
@@ -26,6 +29,15 @@ PUBLIC_IMAGE_HOST_SUFFIXES = (
     "ggpht.com",
     "googleusercontent.com",
 )
+
+# Image hosts of metadata and artwork providers whose terms allow saving
+# their artwork. Only these hosts, over HTTPS, and only for that provider's
+# own connection. (OMDb posters are patron-only, so OMDb has none.)
+PROVIDER_IMAGE_HOSTS = {
+    "tmdb": ("image.tmdb.org",),
+    "tvdb": ("artworks.thetvdb.com",),
+    "fanart": ("fanart.tv",),
+}
 
 MAX_ARTWORK_REDIRECTS = 3
 
@@ -116,6 +128,30 @@ def _public_image_host_allowed(
     )
 
 
+def provider_image_host_allowed(
+    hostname: str,
+    connection_provider: str,
+) -> bool:
+    hostname = (hostname or "").casefold()
+    return any(
+        hostname == suffix or hostname.endswith("." + suffix)
+        for suffix in PROVIDER_IMAGE_HOSTS.get(connection_provider, ())
+    )
+
+
+def artwork_url_downloadable(
+    artwork_url: str,
+    connection_provider: str,
+) -> bool:
+    """Whether a provider's artwork URL may be saved (HTTPS, an allowed host)."""
+
+    try:
+        parsed = urlparse(artwork_url)
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and provider_image_host_allowed(parsed.hostname or "", connection_provider)
+
+
 def _provider_base_origin(
     provider,
     connection_provider: str,
@@ -157,6 +193,12 @@ def allowed_artwork_url(
         return False
 
     scheme, hostname, _port = origin
+
+    if provider_image_host_allowed(
+        hostname,
+        connection_provider,
+    ):
+        return scheme == "https"
 
     if _public_image_host_allowed(
         hostname
@@ -353,6 +395,14 @@ def fetch_remote_artwork(
 def public_provider_error(
     exc: Exception,
 ) -> str:
+    if isinstance(
+        exc,
+        MetadataProviderError,
+    ):
+        # Metadata adapters author these messages from a fixed vocabulary;
+        # they never contain credentials or upstream response bodies.
+        return exc.message
+
     if isinstance(
         exc,
         ProviderHttpError,

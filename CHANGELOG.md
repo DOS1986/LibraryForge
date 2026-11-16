@@ -5,6 +5,90 @@ All notable changes to LibraryForge will be documented in this file.
 LibraryForge uses Semantic Versioning while the application is under active
 pre-1.0 development.
 
+## [0.1.0-alpha.5] - 2026-11-15
+
+### Added
+
+* Added normalized metadata-provider types for movie and series targets: candidates, provider metadata, artwork references, name spaced external IDs, territory-scoped content ratings, and precision-preserving partial dates.
+* Added `metadata_target_types` to integration provider definitions and exposed it in the provider catalog API.
+* Added `search_metadata`, `get_metadata`, and `supports_metadata_target` to the integration provider contract, with request validation before any network call and validation of adapter output.
+* Added stable metadata-provider error categories with explicit retry ability.
+* Added registry discovery of providers that support a metadata target type.
+* Added contract and compatibility tests confirming YouTube and TubeArchivist keep their known-ID lookups and do not claim movie or series search.
+* Added a TMDB integration for movie and TV series metadata retrieval: encrypted API Read Access Token, connection testing, movie and series search, normalized details, certifications and content ratings, IMDb/TVDB/Wikidata IDs, and poster/backdrop/logo references. Retrieval never changes catalog metadata.
+* Added TMDB error mapping to stable metadata error categories, one bounded inline retry for transient failures, `Retry-After` handling, and short-lived credential-scoped caching.
+* Added TMDB attribution to the provider description and a Credits section on the System page.
+* Added mocked TMDB adapter tests covering normalization, malformed and partial responses, error mapping, retries, caching, and credential handling.
+* Added read-only metadata matching for movies and series: owner-scoped context, search, and preview endpoints that never change catalog metadata, provenance, or history.
+* Added explainable match hints (title, original title, year, external-ID agreement or conflict, possible remakes) with advisory tiers.
+* Added a field-level metadata preview that keeps existing and manually edited values by default, suggests only empty fields, blocks locked fields and conflicting IDs, only adds list entries, keeps year and release date consistent, and fingerprints the reviewed state for a later apply step.
+* Added a Match tab to the movie and series editor with provider search, candidate selection, comparison, field choices, and provider attribution.
+* Added provider attribution to provider definitions and the provider catalog API.
+* Added a per-user rate limit for metadata provider requests (`LIBRARYFORGE_METADATA_PROVIDER_RATE`, default `60/min`).
+* Added applying reviewed provider metadata to movies and series. The server rebuilds the preview, refuses stale reviews, accepts only selectable field names, keeps year and release date consistent, and writes values, provenance, and history in one transaction.
+* Added duplicate-submission protection for provider applies using a client-generated operation ID.
+* Added provider provenance: applied fields record the provider as their source with a provider/target/ID reference and are locked against library scans, while a later reviewed match can still replace them and manual edits take priority.
+* Added provider change sets to metadata history with the applied fields, previous values, actor, and secret-free apply details.
+* Added Apply and confirmation steps to the Match tab, with stale-review recovery.
+* Added a library Ratings tab with content-rating coverage for movies and TV series: counts and filters for rated, missing, and unrecognized ratings, title search, and each rating's source.
+* Added reviewed rating suggestions: LibraryForge searches the metadata provider for every unrated item on the current page (in sequential batches of 10, with progress and Stop), suggests a rating only for confident matches, and applies each rating only when confirmed, through the validated apply path.
+* Added a choice of 25, 50, 100, or 200 items per page on the Ratings tab, remembered in the browser, with first/previous/next/last navigation.
+* Added content ratings for online video channels (rated like TV series), and Ratings tabs that show every kind of item a library contains, including mixed libraries.
+* Added setting or clearing ratings by hand for selected movies, series, or channels on the Ratings tab, recorded as locked manual edits with history.
+* Added a quick rating match from the Ratings tab: Find match opens the item's Match tab with the search already run, each result has Save rating from this match (applies only the rating through the validated apply path), and saving returns to the Ratings list.
+* Added estimated US ratings when a provider only has other countries' ratings: each rating is converted to its minimum age (about 20 national systems), the stricter-leaning median is mapped to the US movie or TV scale, and the estimate is labelled, never pre-selected, and saved only on an explicit click.
+* Added an OMDb integration for movie and TV series metadata, mainly as a second source of real US ratings (IMDb certifications): API-key connection testing, search, details, defensive parsing of OMDb fields and errors, and short-lived key-scoped caching within OMDb's personal, non-commercial terms.
+* Added multi-provider rating suggestions: providers are tried in library priority order, a real rating from any provider wins over an estimate, and IDs found by one provider (such as TMDB's IMDb ID) let the next look the item up directly.
+* Added `metadata_id_namespace` to provider definitions so items with a known provider ID are looked up directly.
+* Added a TheTVDB v4 integration for TV series and movies: API key plus optional subscriber PIN, month-long login tokens with automatic renewal, search, English translations, country content ratings (two- or three-letter country codes), remote IMDb/TMDB IDs, and direct lookups by the TVDB ID TMDB provides.
+* Provider HTTP requests can now send a JSON body (used for TheTVDB login).
+* Added editing online videos and channels (title, description, rating, upload date, tags) from the Media page, recorded as locked manual edits with history so scans don't overwrite them. The Jellyfin Shows folder picks up the edits on its next sync.
+* Added writing LibraryForge's fields into NFO files from an item's NFO tab (movies, series, episodes). A side-by-side comparison shows each field's status. Only ticked fields change, and every other tag, comment, and formatting in the file is kept. NFO values LibraryForge lacks are never erased, and missing NFOs can be created beside the video or as tvshow.nfo.
+* Added Create missing NFOs on the NFO page of movie and TV libraries, which creates NFOs in batches from LibraryForge's metadata for items that have none. See `docs/METADATA_EDITING.md`, which also covers keeping embedded tags out of Jellyfin.
+* Added choosing provider artwork in the Match tab: posters, backdrops, logos, banners, and thumbs from TMDB, TheTVDB, or Fanart.tv, shown beside the current artwork. A chosen image is downloaded only from that provider's image host, checked to be a real image, saved beside the item under the name Jellyfin reads (`poster`, `fanart`, `logo`, `banner`, `landscape`), selected, and recorded with provider provenance and history. Existing artwork is replaced only after confirmation and kept as a backup; failures leave the folder unchanged.
+* Added a Fanart.tv artwork integration (project key plus optional personal key), looked up by TMDB, IMDb, or TheTVDB ID.
+* TMDB artwork now includes smaller thumbnail URLs for browsing choices.
+* Added a Channels as TV shows Jellyfin folder for online video libraries (Projections tab): each channel becomes a show with tvshow.nfo, poster, and fanart, each upload year a season, and each video a hardlinked, renamed episode (`S2024E051201 - Title [id].mp4`) with its own NFO and embedded thumbnail. Ratings are written into every NFO. Syncs are previewed, applied in batches (all channels or one), keep episode numbers stable, rename, relink, and remove files as the library changes, and only ever change files LibraryForge recorded writing. TubeArchivist's folder is never changed. See `docs/JELLYFIN_YOUTUBE_SHOWS.md`.
+* Added YouTube rating hints for online video channels: the library's YouTube connection reads YouTube's made-for-kids and age-restriction flags for each channel and its most recent videos (up to 250, batched 50 per quota unit), suggests TV-MA for age-restricted content or TV-Y for made-for-kids channels, and applies reviewed hints, recomputed on the server, with provider provenance that never replaces manual ratings.
+* Added a Jellyfin server integration: connection test, linking each library to its Jellyfin library (suggested by folder name), a Refresh in Jellyfin rescan after NFO changes that never replaces existing metadata, and a parental-control check showing each user's maximum rating, unrated blocking, and how many movies, series, and unrated items they can see.
+* Provider HTTP requests can now use bodiless methods such as POST, and empty responses (HTTP 204) return no data.
+* Added a type-or-pick content rating field to the metadata editor, with standard ratings and their meanings narrowing as you type.
+* Added importing content ratings from indexed NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`), with a preview of what will be filled, kept, or disputed. It only fills empty or previously NFO-imported ratings, never replaces manual or provider ratings, links `tvshow.nfo` to series by folder, normalizes Kodi rating spellings, and works for read-only libraries because no files are changed.
+* Added writing LibraryForge ratings into existing NFO files (`<mpaa>` in movie NFOs and `tvshow.nfo`) for media-server parental controls, with a preview, batched writes with progress, and per-file results. Only the rating changes; formatting, comments, other tags, and line endings are kept. Files whose content changed since the last scan are skipped, and read-only libraries are never written.
+* Added a management mode selector to Library Settings, with confirmation before allowing LibraryForge to change a library's files.
+* Added a scan worker heartbeat so LibraryForge knows whether a scan worker is running. The scan panel and Jobs page show when a scan is waiting because no worker is running (with how to start one), when a scan stopped because its worker stopped, and whether the worker is idle or scanning.
+* Added cancelling scans: queued and stopped scans end immediately, and running scans stop at their next progress checkpoint, which always comes before files are marked missing.
+* Added `run_scan_worker --workers N` (and `LIBRARYFORGE_SCAN_WORKERS`) to scan up to N libraries at once. A supervisor runs N worker processes, restarts crashed workers, drains them on restart requests, and stops them together; workers stop if the supervisor goes away.
+
+### Changed
+
+* Rebranded and redesigned the web interface. A new LibraryForge identity (logo mark, favicon, ember-on-stone "Forge" palette, and type). Light and dark themes that follow the system until you choose, remembered per browser and applied before the page draws. A compact density option for large tables.
+* New navigation: a collapsible sidebar with Dashboard, Jobs, each library with its pages (Overview, Media, Files, NFO, Sources, Needs Attention, Ratings, Projections, Settings), and Setup (Integrations, Settings, System). It collapses to icons and slides out on phones. Breadcrumbs and a Ctrl+K / Cmd+K quick search jump to any page, library page, or appearance setting.
+* New sign-in page, dashboard (library stats and library cards with quick links), shared page headers, and an Add library dialog. Buttons, cards, inputs, badges, tabs, menus, and dialogs were restyled, so every page uses the new look.
+* Page layout pass:
+  * Library Overview has stat tiles and a list of the library's pages. Needs Attention is one card.
+  * Count tiles, notices, and status badges match everywhere: jobs and health checks are green when done or available, amber when completed with errors.
+  * System health checks sit side by side. Settings is a narrower column.
+  * Folder browsers show progress while loading.
+  * The sidebar keeps only the current library expanded.
+* Provider HTTP errors now record a failure reason (timeout, unreachable, invalid JSON, oversized response) and any `Retry-After` delay so adapters can classify failures without parsing messages.
+* Integration connection errors from metadata providers now show the provider's sanitized message.
+* Metadata history now includes each change set's source reference.
+* Writing ratings to NFO files now compares each file's content with the indexed copy instead of its timestamp, so files a media server re-saved without changes can be updated. Files whose content changed are still skipped.
+
+### Fixed
+
+* Writing ratings to NFO files now checks the library folder once before writing and explains why it can't be reached (for example when Windows isn't signed in to the network share), instead of failing every file with a generic message.
+* A scan whose worker stopped mid-scan no longer stays "running" forever and blocks new scans of that library. Workers mark such scans as interrupted when they start, and starting a new scan replaces one whose worker is gone.
+
+### Database
+
+* Added migration `outputs.0002_youtube_shows_layout`: a `layout` field on projections and a `ProjectionFile` manifest of files a projection wrote. Additive only.
+* Added migration `integrations.0002_library_link_options`: an `options` field on library integration links. Additive only.
+* Added migration `catalog.0008_channel_content_rating`: a `content_rating` field on channels. Additive only.
+* Added migration `jobs.0004_scan_worker_heartbeat`: a `ScanWorker` heartbeat table, `worker_id` and `cancel_requested` on scan jobs, and a `cancelled` status. Additive only.
+* Added migration `catalog.0007_metadata_provider_provenance`: a `provider` source for field provenance and change sets, plus `source_ref`, `operation_id` (unique), and `details` on change sets. Additive only.
+
 ## [0.1.0-alpha.4] - 2026-08-11
 
 ### Added

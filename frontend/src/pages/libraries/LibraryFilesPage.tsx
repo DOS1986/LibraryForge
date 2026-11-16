@@ -247,7 +247,7 @@ export function LibraryFilesPage() {
     <Card>
       <CardHeader>
         <CardTitle>
-          Files
+          Files on disk
         </CardTitle>
 
         <CardDescription>

@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
 
+from metadata.providers.types import (
+    MetadataCandidate,
+    MetadataErrorCategory,
+    MetadataIdentity,
+    MetadataProviderError,
+    MetadataTargetType,
+    ProviderMetadata,
+    deduplicate_candidates,
+    parse_target_type,
+    validate_source_id,
+)
 
 CAPABILITY_METADATA = "metadata"
 CAPABILITY_ARTWORK = "artwork"
@@ -53,6 +65,20 @@ class ProviderDefinition:
     credential_mode: str = CREDENTIAL_USER
     credential_summary: str = "Credentials are supplied by the LibraryForge installation owner."
     application_secret_names: tuple[str, ...] = ()
+    # Normalized catalog targets (see metadata.providers.types.MetadataTargetType)
+    # this provider can search and describe. Empty means the provider only
+    # supports its existing known-ID lookups (lookup_one/lookup_many).
+    metadata_target_types: tuple[str, ...] = ()
+    # Notice the provider's terms require wherever its data is shown.
+    attribution: str = ""
+    # External-ID namespace of this provider's source IDs ("tmdb", "imdb"), so
+    # an item that already has that ID can be looked up directly.
+    metadata_id_namespace: str = ""
+
+
+MAX_METADATA_QUERY_LENGTH = 200
+MAX_METADATA_RESULTS = 50
+MAX_METADATA_PAGE = 100
 
 
 class IntegrationProvider:
@@ -102,3 +128,152 @@ class IntegrationProvider:
     def lookup_one(self, *, target_type: str, source_id: str) -> dict[str, Any] | None:
         results = self.lookup_many(target_type=target_type, source_ids=[source_id])
         return results.get(source_id)
+
+    # ------------------------------------------------------------------
+    # Normalized metadata contract (movie / series search and details)
+    #
+    # The public methods validate the request *before* any network call and
+    # validate the adapter's normalized output afterwards. Adapters implement
+    # only _search_metadata and _get_metadata. Neither path may write catalog
+    # data; callers own target authorization, preview, and apply.
+    # ------------------------------------------------------------------
+
+    def supports_metadata_target(self, target_type: MetadataTargetType | str) -> bool:
+        return provider_supports_metadata_target(self.definition, target_type)
+
+    def _require_metadata_target(self, target_type: MetadataTargetType | str) -> MetadataTargetType:
+        parsed = parse_target_type(target_type)
+        if not self.supports_metadata_target(parsed):
+            raise MetadataProviderError(
+                MetadataErrorCategory.UNSUPPORTED_TARGET,
+                f"{self.definition.label} does not provide {parsed.value} metadata.",
+            )
+        return parsed
+
+    def search_metadata(
+        self,
+        *,
+        target_type: MetadataTargetType | str,
+        query: str,
+        year: int | None = None,
+        language: str | None = None,
+        page: int = 1,
+        limit: int = 20,
+    ) -> list[MetadataCandidate]:
+        """Search for movie or series candidates.
+
+        An empty list is a successful "no results" answer. Failures raise
+        ``MetadataProviderError`` with a stable category.
+        """
+
+        parsed = self._require_metadata_target(target_type)
+        cleaned_query = " ".join(str(query or "").split())
+        if not cleaned_query or len(cleaned_query) > MAX_METADATA_QUERY_LENGTH:
+            raise MetadataProviderError(
+                MetadataErrorCategory.INVALID_REQUEST,
+                f"Search text must be 1-{MAX_METADATA_QUERY_LENGTH} characters.",
+            )
+        if year is not None and (isinstance(year, bool) or not isinstance(year, int) or not 1800 <= year <= 2200):
+            raise MetadataProviderError(MetadataErrorCategory.INVALID_REQUEST, "Year must be between 1800 and 2200.")
+        if isinstance(page, bool) or not isinstance(page, int) or not 1 <= page <= MAX_METADATA_PAGE:
+            raise MetadataProviderError(
+                MetadataErrorCategory.INVALID_REQUEST, f"Page must be between 1 and {MAX_METADATA_PAGE}."
+            )
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_METADATA_RESULTS:
+            raise MetadataProviderError(
+                MetadataErrorCategory.INVALID_REQUEST, f"Limit must be between 1 and {MAX_METADATA_RESULTS}."
+            )
+        cleaned_language = self._clean_metadata_language(language)
+
+        results = self._search_metadata(
+            target_type=parsed,
+            query=cleaned_query,
+            year=year,
+            language=cleaned_language,
+            page=page,
+            limit=limit,
+        )
+        if not isinstance(results, list) or not all(isinstance(item, MetadataCandidate) for item in results):
+            raise self._malformed("search results")
+        for item in results:
+            if item.provider != self.definition.key or item.target_type != parsed:
+                raise self._malformed("search results")
+        return deduplicate_candidates(results)[:limit]
+
+    def get_metadata(
+        self,
+        *,
+        target_type: MetadataTargetType | str,
+        source_id: str,
+        language: str | None = None,
+    ) -> ProviderMetadata:
+        """Fetch normalized details for one provider record."""
+
+        parsed = self._require_metadata_target(target_type)
+        try:
+            cleaned_source_id = validate_source_id(source_id)
+        except ValueError as exc:
+            raise MetadataProviderError(MetadataErrorCategory.INVALID_REQUEST, str(exc)) from exc
+        cleaned_language = self._clean_metadata_language(language)
+
+        result = self._get_metadata(target_type=parsed, source_id=cleaned_source_id, language=cleaned_language)
+        if not isinstance(result, ProviderMetadata):
+            raise self._malformed("metadata details")
+        if result.identity != MetadataIdentity(self.definition.key, parsed, cleaned_source_id):
+            raise self._malformed("metadata details")
+        return result
+
+    def _search_metadata(
+        self,
+        *,
+        target_type: MetadataTargetType,
+        query: str,
+        year: int | None,
+        language: str | None,
+        page: int,
+        limit: int,
+    ) -> list[MetadataCandidate]:
+        raise NotImplementedError
+
+    def _get_metadata(
+        self,
+        *,
+        target_type: MetadataTargetType,
+        source_id: str,
+        language: str | None,
+    ) -> ProviderMetadata:
+        raise NotImplementedError
+
+    @staticmethod
+    def _clean_metadata_language(language: str | None) -> str | None:
+        if language in (None, ""):
+            return None
+        if not isinstance(language, str) or not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", language):
+            raise MetadataProviderError(MetadataErrorCategory.INVALID_REQUEST, "Language must be a language tag.")
+        return language
+
+    def _malformed(self, what: str) -> MetadataProviderError:
+        return MetadataProviderError(
+            MetadataErrorCategory.MALFORMED_RESPONSE,
+            f"{self.definition.label} returned malformed {what}.",
+        )
+
+
+def provider_supports_metadata_target(
+    definition: ProviderDefinition,
+    target_type: MetadataTargetType | str,
+) -> bool:
+    """Catalog-level check: capability declared and target type declared.
+
+    This says what a provider *can* do. It does not grant access to any
+    connection; callers must still check the connection, library assignment,
+    and user authorization.
+    """
+
+    if CAPABILITY_METADATA not in definition.capabilities:
+        return False
+    try:
+        parsed = parse_target_type(target_type)
+    except MetadataProviderError:
+        return False
+    return parsed.value in definition.metadata_target_types
