@@ -111,34 +111,33 @@ Completed. The milestone grew to cover content ratings for parental controls, Je
 - rebranded interface with light/dark themes, sidebar navigation, and quick search
 - no automatic destructive metadata replacement
 
-## Planned alpha milestones
-
 ### 0.1.0-alpha.6 — Projection and Output Engine
 
 Goal: turn canonical LibraryForge metadata into safe target-specific projections.
 
-Already started in alpha.5: the hardlinked "Channels as TV shows" Jellyfin folder (dry-run preview, a manifest-based sync that won't overwrite foreign files) and NFO generation for movies and series.
+Completed. Ratings now reach Jellyfin from movie, TV, and online-video libraries, so parental controls cover all three.
 
-Planned work:
-
-- mature OutputProfile model
-- Jellyfin output profile
-- Emby output profile
-- Kodi output profile
-- generic NFO/filesystem profile
-- dry-run projection preview
-- NFO generation from canonical metadata
-- artwork projection
-- symlink/hardlink/copy projection policies
-- collision detection
-- output validation
-- projection history
+- projection engine: stored plans reviewed before anything changes, with findings, counts, and expiry
+- background runs of exactly the reviewed plan, with progress, cancellation, and a per-file journal written before the disk is touched
+- run history per projection, kept after a projection is deleted
+- Jellyfin, Emby, Kodi, and generic output profiles (Jellyfin verified on a live server), with golden fixtures for each
+- movie and TV projection folders with NFOs, artwork, stable name-clash suffixes, and notes for skipped items
+- hardlink, copy, and symlink media policies, with a hardlink acknowledgement and no hardlinks for Read Only libraries
+- NFO and artwork output into the library itself, with field-level NFO updates and backups of replaced artwork
+- "Channels as TV shows" rebuilt on the engine, with safe removals and one-time verification of alpha.5 files
+- Outputs page: every output's state, recent runs with per-file details, allowed output folders, and media server profiles
+- cleanup review for stale, missing, and changed files, with backups before anything is rewritten
+- output folders confined to `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` and kept separate from every library
 
 Source media remains protected according to each library's management mode.
+
+## Planned alpha milestones
 
 ### 0.1.0-alpha.7 — Safe Library Operations
 
 Goal: add intentional, reviewable filesystem-changing workflows for Full Control libraries.
+
+Already started in alpha.6: the reviewed-plan pattern (a stored plan applied exactly as reviewed by the background worker, with a per-file journal and history), backups before a changed file is replaced, and management-mode checks both when planning and when running.
 
 Planned work:
 
@@ -161,7 +160,7 @@ No operation should mutate files before the user can inspect the planned changes
 
 Goal: make LibraryForge resilient enough for long-running self-hosted use.
 
-Already started in alpha.5: scan-worker heartbeats, recovery of scans whose worker stopped, and stale-job detection.
+Already started in alpha.5: scan-worker heartbeats, recovery of scans whose worker stopped, and stale-job detection. Alpha.6 added recovery of interrupted projection runs from their journal.
 
 Planned work:
 
