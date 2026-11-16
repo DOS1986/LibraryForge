@@ -217,10 +217,11 @@ Completed
 
 0.1.0-alpha.6
 Projection and output engine
-Current
+Completed
 
 0.1.0-alpha.7
 Safe library operations
+Current
 
 0.1.0-alpha.8
 Reliability and deployment

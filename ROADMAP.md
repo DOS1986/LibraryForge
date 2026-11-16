@@ -87,31 +87,37 @@ Completed.
 - preserve TubeArchivist source files without rename/move operations
 - regression tests for online-video identity and metadata persistence
 
-## Planned alpha milestones
-
 ### 0.1.0-alpha.5 — Metadata Providers
 
 Goal: enrich canonical metadata through optional external providers without making provider data the source of truth.
 
-Planned work:
+Completed. The milestone grew to cover content ratings for parental controls, Jellyfin, and NFO writing.
 
-- metadata-provider abstraction
-- provider settings and credentials
-- TMDb Movie and TV integration
-- search and candidate matching
-- preview changes before applying provider metadata
-- field-level merge decisions
-- provider provenance
-- provider artwork discovery hooks
-- external ID management
-- provider failure/rate-limit handling
+- metadata-provider contract with normalized types and stable error categories
+- TMDb, OMDb, and TheTVDB metadata providers; Fanart.tv artwork provider
+- search, explainable candidate matching, and field-level preview
+- atomic apply with provider provenance, history, and duplicate-submission protection
+- provider artwork selection, saved beside items with backups of replaced art
+- per-user provider rate limits, bounded retries, and short-lived caches
+- Ratings tab for movies, series, and online-video channels
+- rating suggestions across providers, estimated US ratings, quick match, and manual bulk set
+- YouTube channel rating hints from made-for-kids and age-restriction flags
+- NFO rating import and `<mpaa>`-only export
+- Jellyfin integration: library links, metadata refresh, and parental-control check
+- "Channels as TV shows" hardlinked Jellyfin folder for online-video libraries (early projection work)
+- online-video and channel metadata editing
+- field-level NFO writing and creation of missing NFOs
+- scan-worker heartbeat, stalled-scan recovery, cancellation, and parallel workers
+- rebranded interface with light/dark themes, sidebar navigation, and quick search
 - no automatic destructive metadata replacement
 
-Additional providers can be added after the provider abstraction is proven.
+## Planned alpha milestones
 
 ### 0.1.0-alpha.6 — Projection and Output Engine
 
 Goal: turn canonical LibraryForge metadata into safe target-specific projections.
+
+Already started in alpha.5: the hardlinked "Channels as TV shows" Jellyfin folder (dry-run preview, a manifest-based sync that won't overwrite foreign files) and NFO generation for movies and series.
 
 Planned work:
 
@@ -154,6 +160,8 @@ No operation should mutate files before the user can inspect the planned changes
 ### 0.1.0-alpha.8 — Reliability and Deployment
 
 Goal: make LibraryForge resilient enough for long-running self-hosted use.
+
+Already started in alpha.5: scan-worker heartbeats, recovery of scans whose worker stopped, and stale-job detection.
 
 Planned work:
 

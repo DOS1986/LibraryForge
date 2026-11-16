@@ -611,7 +611,11 @@ export interface Projection {
   output_target: string
   name: string
   destination_path: string
-  layout: "template" | "youtube_shows"
+  layout: "template" | "youtube_shows" | "movies" | "tv" | "library_nfo"
+  stale_policy: "remove_owned" | "keep"
+  hardlink_acknowledged: boolean
+  enabled: boolean
+  needs_preview: boolean
   link_mode:
     | "symlink"
     | "hardlink"
@@ -707,110 +711,154 @@ export interface NfoWriteResult {
   comparison: NfoComparison
 }
 
-export interface NfoCreatePreview {
-  library_id: string
-  kind: "movie" | "series"
-  writable: boolean
-  root_error: string | null
-  missing: number
-  ready: number
-  blocked: number
-  rows: { id: string; title: string; path: string; problem: string }[]
-  rows_truncated: boolean
-}
+export type PlanActionKind = "create" | "update" | "relink" | "replace" | "delete" | "artwork" | "retain"
 
-export interface NfoCreateBatch {
-  created: number
-  problems: { title: string; path: string; message: string }[]
-  next_cursor: string | null
-  remaining: number
-}
-
-export type ShowsAction = "create" | "update" | "relink" | "replace" | "delete" | "artwork"
-
-export type ShowsResult =
-  | "created"
-  | "updated"
-  | "relinked"
-  | "deleted"
-  | "artwork"
-  | "adopted"
-  | "kept"
-  | "conflict"
-  | "failed"
-
-export interface ShowsPlannedChange {
-  action: ShowsAction
-  kind: string
-  path: string
-  channel_id: string | null
-  channel: string
-}
-
-export interface ShowsPlan {
-  projection_id: string
-  destination_path: string
-  channel: string | null
-  source_error: string | null
-  destination_error: string | null
-  artwork_available: boolean
-  summary: Record<ShowsAction, number>
-  pending: number
-  files: Record<string, number>
-  managed_files: number
-  channels: {
-    id: string
-    title: string
-    folder: string
-    rating: string
-    videos: number
-    pending: number
-  }[]
-  actions: ShowsPlannedChange[]
-  actions_truncated: boolean
-  last_run_at: string | null
-}
-
-export interface ShowsProblem extends ShowsPlannedChange {
-  result: ShowsResult
+export interface PlanFinding {
+  code: string
+  severity: "blocking" | "warning"
   message: string
 }
 
-export interface ShowsSyncBatch {
-  projection_id: string
-  counts: Record<ShowsResult, number>
-  problems: ShowsProblem[]
-  error: string | null
-  next_cursor: string | null
-  remaining: number
+export interface PlanActionRow {
+  ordinal: number
+  action: PlanActionKind
+  kind: string
+  path: string
+  group: string
+  group_id: string | null
+  reason: string
 }
 
-export interface ProjectionPreviewItem {
-  media_file_id: string
-  title: string
-  source_path: string
-  destination_media_path: string
-  destination_nfo_path: string
-  metadata: Record<string, unknown>
-}
-
-export interface ProjectionPreview {
+export interface Paged<T> {
+  page: number
+  page_size: number
   total: number
-  preview_count: number
-  items: ProjectionPreviewItem[]
+  next_page: number | null
+  results: T[]
 }
 
-export interface ProjectionRunResult {
-  created: number
-  already_exists: number
-  error_count: number
-  errors: Array<{
-    media_file_id: string
-    path: string
-    error: string
-  }>
+export interface ProjectionPlanDetail {
+  id: string
+  projection_id: string | null
+  projection_name: string
+  status: "ready" | "blocked" | "applied" | "superseded" | "expired"
+  scope: { channel?: string; cleanup?: boolean }
+  digest: string
+  counts: Partial<Record<PlanActionKind, number>>
+  total: number
+  changes: number
+  findings: PlanFinding[]
+  overview: {
+    artwork_available?: boolean
+    files?: Record<string, number>
+    channels?: { id: string; title: string; folder: string; rating: string; videos: number; pending: number }[]
+    series?: { id: string; title: string; folder: string; rating: string; episodes: number; pending: number }[]
+    movies?: number
+    skipped?: number
+    profile?: { target: string; label: string; verified: boolean; notes: string[] }
+    nfo_changes?: number
+    art_changes?: number
+    cleanup?: { stale: number; stale_kept: number; missing: number; changed: number; changed_videos: number }
+  }
+  created_at: string
+  expires_at: string
+  actions: Paged<PlanActionRow>
 }
 
+export type ProjectionRunStatus = "queued" | "running" | "succeeded" | "completed_with_errors" | "failed" | "cancelled" | "interrupted"
+
+export interface ProjectionRunDetail {
+  id: string
+  plan_id: string | null
+  projection_id: string | null
+  projection_name: string
+  status: ProjectionRunStatus
+  status_label: string
+  cancel_requested: boolean
+  total: number
+  done: number
+  counts: Record<string, number>
+  problems: { path: string; action: string; result: string; message: string }[]
+  error: string
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface ProjectionRunsSummary {
+  latest_run: ProjectionRunDetail | null
+  active_run: ProjectionRunDetail | null
+  managed_files: number
+  unverified_files: number
+  results: ProjectionRunDetail[]
+}
+
+export interface OutputRoot {
+  path: string
+  /** ready: the folder exists; creatable: its parent does, so the first run creates it. */
+  state: "ready" | "creatable" | "missing" | "not_answering"
+  /** null when the share didn't answer within a few seconds. */
+  available: boolean | null
+  projections: number
+}
+
+export interface OutputPlanSummary {
+  id: string
+  status: ProjectionPlanDetail["status"]
+  cleanup: boolean
+  counts: Partial<Record<PlanActionKind, number>>
+  changes: number
+  blocking: string[]
+  created_at: string
+}
+
+export interface OutputProjectionRow {
+  id: string
+  name: string
+  library_id: string
+  library_name: string
+  library_content_type: string
+  library_path: string
+  layout: Projection["layout"]
+  layout_label: string
+  in_place: boolean
+  target: OutputProfile["target"]
+  target_label: string
+  destination_path: string
+  link_mode_label: string
+  stale_policy: Projection["stale_policy"]
+  enabled: boolean
+  needs_preview: boolean
+  latest_plan: OutputPlanSummary | null
+  latest_run: ProjectionRunDetail | null
+  active_run: ProjectionRunDetail | null
+  managed_files: number
+  unverified_files: number
+}
+
+export interface OutputRunRow extends ProjectionRunDetail {
+  library_id: string | null
+  library_name: string
+  layout: string
+  in_place: boolean
+  cleanup: boolean
+}
+
+export interface OutputsOverview {
+  roots: OutputRoot[]
+  projections: OutputProjectionRow[]
+  recent_runs: OutputRunRow[]
+}
+
+export interface RunJournalRow {
+  ordinal: number
+  action: string
+  kind: string
+  path: string
+  state: string
+  result: string
+  message: string
+}
 
 export interface SystemVersionInfo {
   name: string

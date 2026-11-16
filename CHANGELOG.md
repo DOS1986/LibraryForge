@@ -5,6 +5,62 @@ All notable changes to LibraryForge will be documented in this file.
 LibraryForge uses Semantic Versioning while the application is under active
 pre-1.0 development.
 
+## [0.1.0-alpha.6] - 2026-11-16
+
+### Added
+
+* Added a projection engine with stored plans and background runs. Checking a projection builds a plan you review: every change, findings, counts, and a 30-minute expiry. Applying it queues a run of exactly that plan in the background worker, with progress, cancellation, and a per-file journal that records each change before the disk is touched.
+* Added run history per projection, with results, problems, and journal details. Runs of a deleted projection stay in the history of whoever ran them.
+* Added movie and TV projections for Jellyfin:
+  * Movies go in `Title (Year)` folders with their primary version, a movie NFO, and their selected artwork.
+  * Shows go in `Show (Year)` folders with tvshow.nfo, artwork, and `Season 01` folders. Episodes are named `Show S01E02 - Title` with episode NFOs (rated like their show when unrated) and thumbnails.
+  * Artwork is copied and refreshed when its source changes. Folder-name clashes get stable ID suffixes.
+  * No-file items, multi-episode files, overlong paths, and name collisions are skipped with notes.
+  * Plans can be limited to one show.
+* Added Emby, Kodi, and generic output profiles for movie and TV projections. They're built to each server's published conventions and labeled as not yet verified on a live server:
+  * Every profile uses the same folders and NFOs.
+  * Kodi names movie art after the file (`<file>-poster.jpg`, `-clearlogo.png`) and puts season art in the show folder (`season01-poster.jpg`).
+  * Emby uses `clearlogo`. Generic projects poster and fanart only.
+  * Golden file-list and NFO fixtures in `backend/outputs/golden/` cover each profile.
+* Added a media server choice when setting up a projection (`target` on the create endpoint) and a profile switch for existing projections. Changing a projection's profile, folder, media policy, or stale policy replaces its open plans.
+* Added `GET/POST /api/libraries/<id>/projections/` for any layout. The Projections page now sets up and runs movie, TV, and online-video folders.
+* Added copy and symlink media policies for projections, alongside hardlinks.
+* Added NFO and artwork output into the library itself, on the NFO page of movie, TV, and mixed libraries (Sidecar Only and Full Control only). It uses the same reviewed plans, background runs, and history as projections:
+  * Missing NFOs are created. Existing NFOs get only the fields LibraryForge has a different value for: other tags, comments, and formatting are kept, and NFO-only values are never erased. A run writes an NFO only if the file is still what the plan read.
+  * Each selected image is copied into the item's folder under the chosen media server's names. A different image already there is kept as a `.libraryforge-backup-` file. LibraryForge's own copies are refreshed, or removed once deselected, if unchanged.
+  * Read Only libraries are refused when planning and when running. A rerun with no changes writes nothing.
+* Added an **Outputs** page listing every projection folder and in-place NFO output across libraries. It shows each one's state (changes to review, blocked, failed, in sync, or running), its last run, and the files it manages. It also has recent runs with per-file details, the allowed output folders and whether each is reachable, and the media server profiles (moved here from the Projections page).
+* Added a **cleanup review** for projections and NFO output. It plans, for your review:
+  * removing kept files whose source is gone, including files a "keep" policy held on to (only after a finished scan, and only if unchanged)
+  * writing managed files that went missing from the folder again
+  * rewriting NFOs and images changed outside LibraryForge, keeping each changed file as a `.libraryforge-backup-` file
+
+  Changed videos are only reported. Regular plans still never overwrite a changed file.
+* Added a path search and a reason for each change to plan reviews, and paged journals with an "only notes and problems" switch to run details.
+* Added `GET /api/outputs/`, `GET /api/output-roots/`, `cleanup` on `POST /api/projections/<id>/plans/`, `q` on plan actions, and `result` on run journals.
+
+### Changed
+
+* The Channels as TV shows folder now uses the projection engine:
+  * Hardlinks need a one-time acknowledgement and are refused for Read Only libraries.
+  * Files of deleted videos are removed only after a finished scan with the library reachable, and a "keep them" policy is available.
+  * After an interrupted run, files are adopted only where the run journal shows they were being created.
+  * Files from alpha.5 are verified against disk once, on the first plan.
+* Changed show and episode NFOs to mark the TVDB ID as the default, then TMDB.
+* The NFO page's **Create missing NFOs** card is replaced by the NFO and artwork output panel. The `nfo-create` endpoint is unchanged.
+* Projection destinations now require `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` (development included) and must be separate from every library. Libraries can't be created over a projection's folder.
+* A projection's folder is checked against the allowed output roots every time it's used. A path outside them is refused before LibraryForge looks it up on disk, and a link inside a root can't lead out of it.
+
+### Removed
+
+* Removed the template projection engine and its preview and run endpoints, plus the batch `shows-plan` and `shows-sync` endpoints. Existing template projections were converted, turned off, and marked to be previewed.
+
+### Database
+
+* Added migration `outputs.0006_library_nfo_layout`: the `library_nfo` projection layout. Choices only.
+* Added migration `outputs.0005_movie_tv_layouts`: `movies` and `tv` layouts, movie-NFO and artwork file kinds, a source fingerprint on managed files, and a group on plan actions. Additive only.
+* Added migrations `outputs.0003_projection_plans_and_runs` and `outputs.0004_projection_plan_overview`. They add projection plans, plan actions, runs, and the run journal; stale policy, hardlink acknowledgement, enabled, and preview flags on projections; and ownership and last run on managed files. Existing managed files are marked for verification and template projections are converted. Additive only.
+
 ## [0.1.0-alpha.5] - 2026-11-15
 
 ### Added

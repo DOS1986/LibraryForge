@@ -38,30 +38,58 @@ Safety:
 
 from __future__ import annotations
 
-import errno
-import hashlib
-import os
 import re
-import subprocess
-import uuid
-import xml.etree.ElementTree as ET
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from django.db import DatabaseError, transaction
-from django.utils import timezone
-
-from catalog.artwork_views import _attached_picture_stream, _ffmpeg_executable
 from catalog.models import ArtworkFile, Channel
 from catalog.services.artwork import embedded_artwork_locator
 from integrations.security import fetch_remote_artwork
 from integrations.services import active_links_for_library, provider_for_connection
 from media.models import MediaFile
-from metadata.services import secure_nfo
 from metadata.services.provider_match import MatchRequestError
 from outputs.models import Projection, ProjectionFile
+from outputs.services.fileops import (  # noqa: F401 - shared helpers
+    _CROSS_DEVICE_WINERRORS,
+    _INVALID,
+    _RESERVED,
+    _XML_INVALID,
+    ACTION_ARTWORK,
+    ACTION_CREATE,
+    ACTION_DELETE,
+    ACTION_RELINK,
+    ACTION_REPLACE,
+    ACTION_UPDATE,
+    ACTIONS,
+    MAX_THUMB_BYTES,
+    RESULTS,
+    Action,
+    Desired,
+    _apply,
+    _clean,
+    _Conflict,
+    _create,
+    _CrossDevice,
+    _destination_root,
+    _file_sha,
+    _is_ours,
+    _link,
+    _matches_source,
+    _place,
+    _prune,
+    _record,
+    _remove_ours,
+    _same_file,
+    _sha,
+    _source,
+    _target,
+    _thumbnail,
+    _write_bytes,
+    _xml,
+    destination_error,
+    safe_segment,
+)
 
 Kind = ProjectionFile.Kind
 
@@ -71,56 +99,15 @@ DEFAULT_BATCH = 25
 MAX_BATCH = 200
 SAMPLE_LIMIT = 200
 MAX_ARTWORK_BYTES = 15 * 1024 * 1024
-MAX_THUMB_BYTES = 25 * 1024 * 1024
 
-ACTION_CREATE = "create"
-ACTION_UPDATE = "update"
-ACTION_RELINK = "relink"
-ACTION_REPLACE = "replace"
-ACTION_DELETE = "delete"
-ACTION_ARTWORK = "artwork"
-ACTIONS = (ACTION_CREATE, ACTION_UPDATE, ACTION_RELINK, ACTION_REPLACE, ACTION_DELETE, ACTION_ARTWORK)
 
-RESULTS = ("created", "updated", "relinked", "deleted", "artwork", "adopted", "kept", "conflict", "failed")
-
-_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
-_RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
-_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
 _EXTENSION = re.compile(r"^[a-z0-9]{1,8}$")
 _IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
-_CROSS_DEVICE_WINERRORS = (17,)  # ERROR_NOT_SAME_DEVICE
 
 
 # ---------------------------------------------------------------------------
 # Names and NFO documents
 # ---------------------------------------------------------------------------
-
-
-def safe_segment(value: Any, limit: int) -> str:
-    """A single file or folder name that's valid on Windows, Linux, and SMB."""
-
-    text = " ".join(_INVALID.sub("_", str(value or "")).split())
-    text = text[:limit].strip().strip(". ")
-    if not text:
-        return "Untitled"
-    if text.split(".")[0].casefold() in _RESERVED:
-        text = f"_{text}"
-    return text
-
-
-def _clean(value: Any) -> str:
-    return _XML_INVALID.sub("", str(value or "")).strip()
-
-
-def _xml(root_name: str, fields: list[tuple[str, Any, dict[str, str]]]) -> bytes:
-    root = ET.Element(root_name)
-    for tag, value, attributes in fields:
-        text = _clean(value)
-        if text:
-            ET.SubElement(root, tag, attributes).text = text
-    ET.indent(root, space="  ")
-    body = ET.tostring(root, encoding="unicode")
-    return f'<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n{body}\n'.encode()
 
 
 def show_nfo(channel: Channel, *, premiered: str = "") -> bytes:
@@ -163,51 +150,9 @@ def episode_nfo(*, media_file: MediaFile, video, channel: Channel, season: int, 
     )
 
 
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 # ---------------------------------------------------------------------------
 # Planning (database only)
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class Desired:
-    path: str
-    kind: str
-    channel: Channel
-    media_file: MediaFile | None = None
-    content: bytes | None = None
-    season: int | None = None
-    episode: int | None = None
-    stream_index: int | None = None
-
-
-@dataclass
-class Action:
-    action: str
-    kind: str
-    path: str
-    channel: Channel | None
-    desired: Desired | None = None
-    row: ProjectionFile | None = None
-
-    @property
-    def sort_key(self) -> str:
-        # Show files first, deletions last, so a renamed video is linked
-        # under its new name before the old name is removed.
-        phase = 2 if self.action == ACTION_DELETE else (0 if self.kind in (Kind.SHOW_NFO, "artwork") else 1)
-        return f"{phase}\x00{self.path}"
-
-    def summary(self) -> dict[str, Any]:
-        return {
-            "action": self.action,
-            "kind": self.kind,
-            "path": self.path,
-            "channel_id": str(self.channel.id) if self.channel else None,
-            "channel": self.channel.title if self.channel else "",
-        }
 
 
 def _videos(library) -> list[tuple[Any, MediaFile]]:
@@ -409,253 +354,14 @@ def _filtered(actions: list[Action], channel_id: str | None) -> list[Action]:
     return [action for action in actions if action.channel and str(action.channel.id) == str(channel_id)]
 
 
-def destination_error(projection) -> str | None:
-    """None if the destination folder exists or can be created, else why not."""
-
-    try:
-        destination = Path(projection.destination_path).expanduser()
-        if destination.exists():
-            return None if destination.is_dir() else "The destination isn't a folder."
-        if not destination.parent.is_dir():
-            return f"The destination's parent folder ({destination.parent}) doesn't exist."
-    except OSError as exc:
-        return secure_nfo.library_root_problem(exc)
-    return None
-
-
-def shows_plan(projection, *, channel: str | None = None) -> dict[str, Any]:
-    _require_layout(projection)
-    plan = _plan(projection)
-    actions = _filtered(plan["actions"], channel)
-    summary = dict.fromkeys(ACTIONS, 0)
-    for action in actions:
-        summary[action.action] += 1
-
-    files = dict.fromkeys(Kind.values, 0)
-    for item in plan["desired"]:
-        files[item.kind] += 1
-    pending_by_channel: dict[str, int] = defaultdict(int)
-    videos_by_channel: dict[str, int] = defaultdict(int)
-    for action in plan["actions"]:
-        if action.channel:
-            pending_by_channel[str(action.channel.id)] += 1
-    for item in plan["desired"]:
-        if item.kind == Kind.VIDEO:
-            videos_by_channel[str(item.channel.id)] += 1
-
-    library = projection.library
-    return {
-        "projection_id": str(projection.id),
-        "destination_path": projection.destination_path,
-        "channel": channel or None,
-        "source_error": secure_nfo.library_root_error(library),
-        "destination_error": destination_error(projection),
-        "artwork_available": plan["has_artwork"],
-        "summary": summary,
-        "pending": len(actions),
-        "files": files,
-        "managed_files": ProjectionFile.objects.filter(projection=projection).count(),
-        "channels": [
-            {
-                "id": str(value.id),
-                "title": value.title,
-                "folder": plan["names"][value.id],
-                "rating": value.content_rating,
-                "videos": videos_by_channel[str(value.id)],
-                "pending": pending_by_channel[str(value.id)],
-            }
-            for value in plan["channels"]
-        ],
-        "actions": [action.summary() for action in actions[:SAMPLE_LIMIT]],
-        "actions_truncated": len(actions) > SAMPLE_LIMIT,
-        "last_run_at": projection.last_run_at.isoformat() if projection.last_run_at else None,
-    }
-
-
 # ---------------------------------------------------------------------------
-# Applying (one batch at a time)
+# Applying one planned action (the engine journals and sequences them)
 # ---------------------------------------------------------------------------
-
-
-class _Conflict(Exception):
-    pass
-
-
-class _CrossDevice(Exception):
-    pass
 
 
 def _require_layout(projection) -> None:
     if projection.layout != Projection.Layout.YOUTUBE_SHOWS:
         raise MatchRequestError("This projection doesn't use the Channels as TV shows layout.")
-
-
-def _destination_root(projection) -> Path:
-    destination = Path(projection.destination_path).expanduser()
-    if not destination.exists():
-        destination.mkdir()
-    root = destination.resolve(strict=True)
-    if not root.is_dir():
-        raise MatchRequestError("The destination isn't a folder.", status=409)
-    return root
-
-
-def _target(root: Path, relative: str, *, create_parents: bool) -> Path:
-    parts = PurePosixPath(relative).parts
-    if not parts or ".." in parts or PurePosixPath(relative).is_absolute():
-        raise _Conflict("The destination path is invalid.")
-    path = root.joinpath(*parts)
-    if create_parents:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    parent = path.parent.resolve(strict=False)
-    # A junction or symlink inside the destination must not lead elsewhere.
-    if not (parent == root or parent.is_relative_to(root)):
-        raise _Conflict("The destination folder leads outside the projection folder.")
-    if path.is_symlink():
-        raise _Conflict("A link LibraryForge didn't create is at this path.")
-    return path
-
-
-def _source(library_root: Path, media_file: MediaFile) -> Path:
-    parts = PurePosixPath(str(media_file.relative_path).replace("\\", "/")).parts
-    if not parts or ".." in parts:
-        raise _Conflict("The source path is invalid.")
-    path = library_root.joinpath(*parts).resolve(strict=True)
-    if not path.is_relative_to(library_root) or not path.is_file():
-        raise _Conflict("The source file isn't inside the library.")
-    return path
-
-
-def _same_file(first: Path, second: Path) -> bool:
-    try:
-        a, b = first.stat(), second.stat()
-    except OSError:
-        return False
-    if a.st_ino and b.st_ino:
-        return a.st_ino == b.st_ino and a.st_dev == b.st_dev
-    # Some network shares report no file IDs; hardlinks share size and time.
-    return a.st_size == b.st_size and a.st_mtime_ns == b.st_mtime_ns
-
-
-def _write_bytes(path: Path, data: bytes) -> None:
-    temporary = path.with_name(f".libraryforge-{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(data)
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
-
-
-def _file_sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _is_ours(path: Path, row: ProjectionFile) -> bool:
-    """The file still is what LibraryForge recorded writing."""
-
-    if row.kind == Kind.VIDEO:
-        return row.size_bytes is not None and path.stat().st_size == row.size_bytes
-    return bool(row.content_sha256) and _file_sha(path) == row.content_sha256
-
-
-def _link(source: Path, destination: Path) -> None:
-    try:
-        os.link(source, destination)
-    except OSError as exc:
-        if exc.errno == errno.EXDEV or getattr(exc, "winerror", None) in _CROSS_DEVICE_WINERRORS:
-            raise _CrossDevice from exc
-        raise
-
-
-def _thumbnail(source: Path, media_file: MediaFile, stream_index: int) -> bytes:
-    if _attached_picture_stream(media_file, stream_index) is None:
-        raise _Conflict("The video has no embedded thumbnail.")
-    command = [
-        _ffmpeg_executable(), "-v", "error", "-i", str(source), "-map", f"0:{stream_index}",
-        "-frames:v", "1", "-c:v", "mjpeg", "-q:v", "2", "-f", "image2pipe", "pipe:1",
-    ]
-    try:
-        result = subprocess.run(command, capture_output=True, check=False, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise _Conflict("The thumbnail couldn't be read from the video.") from exc
-    data = result.stdout
-    if result.returncode != 0 or not data.startswith(b"\xff\xd8") or len(data) > MAX_THUMB_BYTES:
-        raise _Conflict("The thumbnail couldn't be read from the video.")
-    return data
-
-
-def _record(projection, path: str, desired: Desired, *, size: int | None, sha: str = "") -> None:
-    ProjectionFile.objects.update_or_create(
-        projection=projection,
-        relative_path=path,
-        defaults={
-            "kind": desired.kind,
-            "media_file": desired.media_file,
-            "channel": desired.channel,
-            "season_number": desired.season,
-            "episode_number": desired.episode,
-            "size_bytes": size,
-            "content_sha256": sha,
-        },
-    )
-
-
-def _create(projection, root: Path, library_root: Path, desired: Desired) -> str:
-    path = _target(root, desired.path, create_parents=True)
-    if desired.kind == Kind.VIDEO:
-        source = _source(library_root, desired.media_file)
-        if path.exists():
-            if not _same_file(source, path):
-                raise _Conflict("A file LibraryForge didn't create is already at this path.")
-            _record(projection, desired.path, desired, size=source.stat().st_size)
-            return "adopted"
-        _link(source, path)
-        _record(projection, desired.path, desired, size=source.stat().st_size)
-        return "created"
-
-    if desired.kind == Kind.THUMB:
-        data = _thumbnail(_source(library_root, desired.media_file), desired.media_file, desired.stream_index)
-    else:
-        data = desired.content or b""
-    if path.exists():
-        # Left by an interrupted sync: adopt it only if it's exactly what we'd write.
-        if _file_sha(path) != _sha(data):
-            raise _Conflict("A file LibraryForge didn't create is already at this path.")
-        _record(projection, desired.path, desired, size=len(data), sha=_sha(data))
-        return "adopted"
-    _write_bytes(path, data)
-    _record(projection, desired.path, desired, size=len(data), sha=_sha(data))
-    return "created"
-
-
-def _remove_ours(root: Path, row: ProjectionFile) -> bool:
-    """Delete a manifest file if it's unchanged; False if it was kept."""
-
-    path = _target(root, row.relative_path, create_parents=False)
-    if path.exists():
-        if not _is_ours(path, row):
-            return False
-        path.unlink()
-    _prune(root, path.parent)
-    return True
-
-
-def _prune(root: Path, folder: Path) -> None:
-    """Remove folders left empty, up to the destination root."""
-
-    current = folder
-    while current != root and current.is_relative_to(root):
-        try:
-            current.rmdir()
-        except OSError:
-            return
-        current = current.parent
 
 
 def _channel_artwork(library, channel: Channel) -> dict[str, tuple[bytes, str]]:
@@ -736,127 +442,50 @@ def _artwork(projection, root: Path, action: Action) -> str:
     return "artwork"
 
 
-def _apply(projection, root: Path, library_root: Path, action: Action) -> str:
-    if action.action == ACTION_CREATE:
-        return _create(projection, root, library_root, action.desired)
-    if action.action == ACTION_ARTWORK:
-        return _artwork(projection, root, action)
-    if action.action == ACTION_DELETE:
-        kept = not _remove_ours(root, action.row)
-        action.row.delete()
-        return "kept" if kept else "deleted"
-
-    row = action.row
-    path = _target(root, row.relative_path, create_parents=True)
-    if action.action == ACTION_RELINK:
-        source = _source(library_root, action.desired.media_file)
-        if path.exists():
-            if _same_file(source, path):
-                _record(projection, action.path, action.desired, size=source.stat().st_size)
-                return "relinked"
-            if not _is_ours(path, row):
-                raise _Conflict("The linked video changed outside LibraryForge, so it was left alone.")
-            path.unlink()
-        _link(source, path)
-        _record(projection, action.path, action.desired, size=source.stat().st_size)
-        return "relinked"
-
-    # Update or replace: only an unchanged file of ours is rewritten.
-    if path.exists():
-        if not _is_ours(path, row):
-            raise _Conflict("This file was changed outside LibraryForge, so it was left alone.")
-        if action.action == ACTION_UPDATE:
-            data = action.desired.content or b""
-            _write_bytes(path, data)
-            _record(projection, action.path, action.desired, size=len(data), sha=_sha(data))
-            return "updated"
-        path.unlink()
-    row.delete()
-    result = _create(projection, root, library_root, action.desired)
-    return "updated" if result == "created" else result
 
 
-def shows_sync(projection, *, cursor: str | None = None, batch: Any = None, channel: str | None = None) -> dict[str, Any]:
-    """Apply one batch of the plan, in a stable order, starting after ``cursor``."""
-
-    _require_layout(projection)
-    library = projection.library
-    if library.management_mode == library.ManagementMode.READ_ONLY:
-        # Source files are only read, but a read-only library is a clear
-        # signal not to build anything from it without changing that first.
-        raise MatchRequestError(
-            "This library is Read Only. Change its management mode to Sidecar Only to build a Jellyfin folder from it.",
-            status=409,
-        )
-    try:
-        size = int(batch) if batch not in (None, "") else DEFAULT_BATCH
-    except (TypeError, ValueError) as exc:
-        raise MatchRequestError("Batch must be a whole number.") from exc
-    if not 1 <= size <= MAX_BATCH:
-        raise MatchRequestError(f"Batch must be between 1 and {MAX_BATCH}.")
-    for problem in (secure_nfo.library_root_error(library), destination_error(projection)):
-        if problem:
-            raise MatchRequestError(problem, status=409)
-
-    try:
-        with transaction.atomic():
-            # One sync per destination at a time.
-            Projection.objects.select_for_update(nowait=True).get(pk=projection.pk)
-            return _sync_batch(projection, cursor=cursor, size=size, channel=channel)
-    except DatabaseError as exc:
-        if "lock" in str(exc).casefold() or "could not obtain" in str(exc).casefold():
-            raise MatchRequestError("A sync for this folder is already running.", status=409) from exc
-        raise
+# ---------------------------------------------------------------------------
+# Engine entry points
+# ---------------------------------------------------------------------------
 
 
-def _sync_batch(projection, *, cursor: str | None, size: int, channel: str | None) -> dict[str, Any]:
-    library_root = Path(projection.library.path).expanduser().resolve(strict=True)
-    try:
-        root = _destination_root(projection)
-    except OSError as exc:
-        raise MatchRequestError(secure_nfo.library_root_problem(exc), status=409) from exc
-
-    pending = _filtered(_plan(projection)["actions"], channel)
-    if cursor:
-        pending = [action for action in pending if action.sort_key > cursor]
-    selected = pending[:size]
-
-    counts = dict.fromkeys(RESULTS, 0)
-    problems: list[dict[str, Any]] = []
-    error = None
-    done = 0
-    for action in selected:
-        try:
-            with transaction.atomic():
-                result = _apply(projection, root, library_root, action)
-        except _CrossDevice:
-            # Every link would fail the same way. Stop, keeping what this batch recorded.
-            error = (
-                "Hardlinks can't be made here: the Jellyfin folder has to be on the same share and volume as the "
-                "library. Choose a destination next to the library folder."
-            )
-            break
-        except _Conflict as exc:
-            result = "conflict"
-            problems.append({**action.summary(), "result": result, "message": str(exc)})
-        except OSError as exc:
-            result = "failed"
-            problems.append({**action.summary(), "result": result, "message": exc.strerror or str(exc)})
-        counts[result] += 1
-        done += 1
-        if result == "kept":
-            problems.append(
-                {**action.summary(), "result": result, "message": "Changed outside LibraryForge, so it was left in place."}
-            )
-
-    remaining = len(pending) - done
-    projection.last_run_at = timezone.now()
-    projection.save(update_fields=["last_run_at", "updated_at"])
+def _shows_overview(projection: Projection, planned: dict[str, Any], actions: list) -> dict[str, Any]:
+    pending: dict[str, int] = {}
+    videos: dict[str, int] = {}
+    files: dict[str, int] = {}
+    for action in planned["actions"]:
+        if action.channel and action.action != "retain":
+            pending[str(action.channel.id)] = pending.get(str(action.channel.id), 0) + 1
+    for item in planned["desired"]:
+        files[item.kind] = files.get(item.kind, 0) + 1
+        if item.kind == Kind.VIDEO:
+            videos[str(item.channel.id)] = videos.get(str(item.channel.id), 0) + 1
     return {
-        "projection_id": str(projection.id),
-        "counts": counts,
-        "problems": problems,
-        "error": error,
-        "next_cursor": selected[done - 1].sort_key if done and remaining > 0 and error is None else None,
-        "remaining": remaining,
+        "artwork_available": planned["has_artwork"],
+        "files": files,
+        "channels": [
+            {
+                "id": str(channel.id),
+                "title": channel.title,
+                "folder": planned["names"][channel.id],
+                "rating": channel.content_rating,
+                "videos": videos.get(str(channel.id), 0),
+                "pending": pending.get(str(channel.id), 0),
+            }
+            for channel in planned["channels"]
+        ],
     }
+
+
+def plan(projection) -> dict[str, Any]:
+    planned = _plan(projection)
+    return {
+        "actions": planned["actions"],
+        "desired": planned["desired"],
+        "findings": [],
+        "overview": _shows_overview(projection, planned, planned["actions"]),
+    }
+
+
+def filter_scope(actions: list, scope_id: str | None) -> list:
+    return _filtered(actions, scope_id)

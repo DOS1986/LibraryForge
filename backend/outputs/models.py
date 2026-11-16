@@ -95,6 +95,24 @@ class Projection(models.Model):
             "Channels as TV shows",
         )
 
+        # Movie (Year)/Movie (Year).ext with NFO and artwork.
+        MOVIES = (
+            "movies",
+            "Movies",
+        )
+
+        # Show (Year)/Season 01/Show S01E02 - Title.ext with NFOs and artwork.
+        TV = (
+            "tv",
+            "TV shows",
+        )
+
+        # NFOs and artwork written into the library itself (no output folder).
+        LIBRARY_NFO = (
+            "library_nfo",
+            "NFOs and artwork in the library",
+        )
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -107,10 +125,43 @@ class Projection(models.Model):
         related_name="projections",
     )
 
+    class StalePolicy(models.TextChoices):
+        # Remove output LibraryForge created whose source is gone, if unchanged.
+        REMOVE_OWNED = ("remove_owned", "Remove owned, unchanged files")
+        KEEP = ("keep", "Keep and report")
+
     layout = models.CharField(
         max_length=32,
         choices=Layout.choices,
         default=Layout.TEMPLATE,
+    )
+
+    stale_policy = models.CharField(
+        max_length=16,
+        choices=StalePolicy.choices,
+        default=StalePolicy.REMOVE_OWNED,
+    )
+
+    # A hardlink is the same file under a second name; the owner confirms
+    # they understand nothing should write into media through the output.
+    hardlink_acknowledged = models.BooleanField(
+        default=False,
+    )
+
+    enabled = models.BooleanField(
+        default=True,
+    )
+
+    needs_preview = models.BooleanField(
+        default=False,
+    )
+
+    last_successful_run = models.ForeignKey(
+        "ProjectionRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
     )
 
     output_profile = models.ForeignKey(
@@ -245,6 +296,9 @@ class ProjectionFile(models.Model):
         SHOW_NFO = ("show_nfo", "Show NFO")
         POSTER = ("poster", "Show poster")
         FANART = ("fanart", "Show fanart")
+        MOVIE_NFO = ("movie_nfo", "Movie NFO")
+        # Artwork copied from the library (poster, fanart, logo, season art, episode thumbs).
+        ART = ("art", "Artwork")
 
     id = models.UUIDField(
         primary_key=True,
@@ -305,6 +359,34 @@ class ProjectionFile(models.Model):
         default="",
     )
 
+    # What the file was made from (an artwork file's path, size, and time), so
+    # a changed source is noticed without reading it.
+    source_fingerprint = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+    )
+
+    class Ownership(models.TextChoices):
+        OWNED = ("owned", "Owned")
+        # Written before run journals existed; verified against disk on first use.
+        LEGACY_UNVERIFIED = ("legacy_unverified", "Legacy, not yet verified")
+        LEGACY_VERIFIED = ("legacy_verified", "Legacy, verified")
+
+    ownership = models.CharField(
+        max_length=24,
+        choices=Ownership.choices,
+        default=Ownership.OWNED,
+    )
+
+    last_run = models.ForeignKey(
+        "ProjectionRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
@@ -328,3 +410,146 @@ class ProjectionFile(models.Model):
 
     def __str__(self):
         return self.relative_path
+
+
+class ProjectionPlan(models.Model):
+    """A reviewed, stored set of changes for one projection.
+
+    Building a plan reads only. A run applies exactly these actions,
+    rechecking each one; a plan whose inputs changed must be rebuilt.
+    """
+
+    class Status(models.TextChoices):
+        READY = ("ready", "Ready")
+        BLOCKED = ("blocked", "Blocked")
+        APPLIED = ("applied", "Applied")
+        SUPERSEDED = ("superseded", "Superseded")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    projection = models.ForeignKey(Projection, on_delete=models.SET_NULL, null=True, related_name="plans")
+    # Kept so history stays readable after the projection is deleted.
+    projection_name = models.CharField(max_length=255, blank=True, default="")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.READY)
+    # Optional scope: one channel (online video) or other object.
+    scope = models.JSONField(default=dict, blank=True)
+    content_digest = models.CharField(max_length=64)
+    manifest_revision = models.CharField(max_length=64)
+    counts = models.JSONField(default=dict, blank=True)
+    findings = models.JSONField(default=list, blank=True)
+    # Layout-specific summary for the preview (for example channels and folders).
+    overview = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ProjectionPlanAction(models.Model):
+    class Action(models.TextChoices):
+        CREATE = ("create", "Create")
+        UPDATE = ("update", "Update")
+        RELINK = ("relink", "Relink")
+        REPLACE = ("replace", "Replace")
+        DELETE = ("delete", "Remove")
+        ARTWORK = ("artwork", "Fetch artwork")
+        RETAIN = ("retain", "Keep")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.ForeignKey(ProjectionPlan, on_delete=models.CASCADE, related_name="actions")
+    ordinal = models.PositiveIntegerField()
+    action = models.CharField(max_length=16, choices=Action.choices)
+    kind = models.CharField(max_length=16)
+    relative_path = models.TextField()
+    comparison_key = models.TextField()
+    channel = models.ForeignKey("catalog.Channel", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    media_file = models.ForeignKey("media.MediaFile", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    manifest_file = models.ForeignKey(ProjectionFile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # The movie, series, or channel an action belongs to (for scoping and display).
+    group_id = models.CharField(max_length=64, blank=True, default="")
+    group_title = models.CharField(max_length=1024, blank=True, default="")
+    # What the target looked like when planned (manifest size/hash) and what it should become.
+    expected = models.JSONField(default=dict, blank=True)
+    desired = models.JSONField(default=dict, blank=True)
+    # Generated file contents (NFOs), stored so a run never re-renders.
+    content = models.TextField(blank=True, default="")
+    content_sha256 = models.CharField(max_length=64, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["plan", "ordinal"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "ordinal"], name="unique_plan_action_ordinal"),
+        ]
+
+
+class ProjectionRun(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = ("queued", "Queued")
+        RUNNING = ("running", "Running")
+        SUCCEEDED = ("succeeded", "Succeeded")
+        COMPLETED_WITH_ERRORS = ("completed_with_errors", "Completed with errors")
+        FAILED = ("failed", "Failed")
+        CANCELLED = ("cancelled", "Cancelled")
+        INTERRUPTED = ("interrupted", "Interrupted")
+
+    ACTIVE = (Status.QUEUED, Status.RUNNING)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.ForeignKey(ProjectionPlan, on_delete=models.SET_NULL, null=True, related_name="runs")
+    projection = models.ForeignKey(Projection, on_delete=models.SET_NULL, null=True, related_name="runs")
+    projection_name = models.CharField(max_length=255, blank=True, default="")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
+    idempotency_key = models.CharField(max_length=64)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.QUEUED)
+    worker_id = models.CharField(max_length=64, blank=True, default="")
+    cancel_requested = models.BooleanField(default=False)
+    total = models.PositiveIntegerField(default=0)
+    done = models.PositiveIntegerField(default=0)
+    counts = models.JSONField(default=dict, blank=True)
+    problems = models.JSONField(default=list, blank=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["projection", "idempotency_key"], name="unique_projection_run_idempotency_key"
+            ),
+            models.UniqueConstraint(
+                fields=["projection"],
+                condition=models.Q(status__in=["queued", "running"]),
+                name="one_active_run_per_projection",
+            ),
+        ]
+
+
+class ProjectionRunAction(models.Model):
+    """The run journal: intent is recorded before each filesystem change."""
+
+    class State(models.TextChoices):
+        INTENT = ("intent", "Started")
+        DONE = ("done", "Done")
+        SKIPPED = ("skipped", "Skipped")
+        FAILED = ("failed", "Failed")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(ProjectionRun, on_delete=models.CASCADE, related_name="actions")
+    plan_action = models.ForeignKey(ProjectionPlanAction, on_delete=models.SET_NULL, null=True, related_name="+")
+    ordinal = models.PositiveIntegerField()
+    action = models.CharField(max_length=16)
+    kind = models.CharField(max_length=16)
+    relative_path = models.TextField()
+    state = models.CharField(max_length=16, choices=State.choices, default=State.INTENT)
+    result = models.CharField(max_length=24, blank=True, default="")
+    message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["run", "ordinal"]

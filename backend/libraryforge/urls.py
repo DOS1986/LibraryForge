@@ -87,7 +87,16 @@ from metadata.views import (
 from outputs.views import (
     OutputProfileViewSet,
     ProjectionViewSet,
+    library_projections_view,
     library_youtube_shows_view,
+    output_roots_view,
+    outputs_overview_view,
+    plan_actions_view,
+    plan_detail_view,
+    plan_run_view,
+    run_actions_view,
+    run_cancel_view,
+    run_detail_view,
 )
 
 
@@ -352,6 +361,15 @@ urlpatterns = [
         name="library-rating-nfo-import",
     ),
 
+    path("api/projection-plans/<uuid:plan_id>/", plan_detail_view, name="projection-plan-detail"),
+    path("api/projection-plans/<uuid:plan_id>/actions/", plan_actions_view, name="projection-plan-actions"),
+    path("api/projection-plans/<uuid:plan_id>/runs/", plan_run_view, name="projection-plan-run"),
+    path("api/projection-runs/<uuid:run_id>/", run_detail_view, name="projection-run-detail"),
+    path("api/projection-runs/<uuid:run_id>/actions/", run_actions_view, name="projection-run-actions"),
+    path("api/projection-runs/<uuid:run_id>/cancel/", run_cancel_view, name="projection-run-cancel"),
+    path("api/libraries/<uuid:library_id>/projections/", library_projections_view, name="library-projections"),
+    path("api/outputs/", outputs_overview_view, name="outputs-overview"),
+    path("api/output-roots/", output_roots_view, name="output-roots"),
     path(
         "api/libraries/<uuid:library_id>/youtube-shows/",
         library_youtube_shows_view,

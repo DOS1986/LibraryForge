@@ -25,7 +25,7 @@ The fields are title, original and sort title, plot, tagline, rating, release da
 
 - **Existing NFOs.** Only the ticked fields change. Every other tag (cast, artwork links, IDs, custom tags), the comments, the formatting, and the line endings are kept byte for byte. Only top-level fields are touched, so an actor's `<name>` or a set's `<overview>` is never changed. Duplicate copies of a field are reduced to one, because Jellyfin reads the last copy.
 - **Missing NFOs.** **Create NFO** writes one with everything LibraryForge has, in the names Jellyfin reads: `<video file name>.nfo` beside a movie or episode, and `tvshow.nfo` in a series' folder.
-- **Whole libraries.** The NFO page of a movie or TV library has **Create missing NFOs**. It lists the movies or series without an NFO and creates them in batches. Existing NFOs aren't touched.
+- **Whole libraries.** The NFO page of a movie, TV, or mixed library has **NFOs and artwork in this library**. It plans and applies, in the background, every missing NFO, every changed field in existing NFOs, and the selected artwork under a media server's names. See [PROJECTIONS.md](PROJECTIONS.md#nfos-and-artwork-in-the-library).
 
 ### Safety
 
