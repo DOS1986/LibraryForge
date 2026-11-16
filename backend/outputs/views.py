@@ -231,7 +231,7 @@ def library_youtube_shows_view(request, library_id):
     try:
         validate_projection_destination(library=library, destination_path=destination, user=request.user)
     except ProjectionSecurityError as exc:
-        raise ValidationError({"destination_path": str(exc)}) from exc
+        raise ValidationError({"destination_path": exc.message}) from exc
     if Projection.objects.filter(library=library, destination_path=destination).exists():
         raise ValidationError({"destination_path": "This library already has a projection to that folder."})
 
@@ -315,7 +315,7 @@ def library_projections_view(request, library_id):
         try:
             validate_projection_destination(library=library, destination_path=destination, user=request.user)
         except ProjectionSecurityError as exc:
-            raise ValidationError({"destination_path": str(exc)}) from exc
+            raise ValidationError({"destination_path": exc.message}) from exc
         if Projection.objects.filter(destination_path__iexact=destination).exists():
             raise ValidationError({"destination_path": "Another projection already writes to that folder."})
 

@@ -20,7 +20,7 @@ from outputs.models import (
     ProjectionPlanAction,
     ProjectionRun,
 )
-from outputs.security import _inside, _resolve
+from outputs.security import _inside, _resolve, confined_output_folder
 from outputs.services import engine
 
 ROOT_TIMEOUT_SECONDS = 3
@@ -70,8 +70,9 @@ def output_roots(projections: list[Projection]) -> list[dict[str, Any]]:
         if projection.layout == Projection.Layout.LIBRARY_NFO or not projection.destination_path:
             continue
         try:
-            destinations.append(_resolve(projection.destination_path))
+            destinations.append(confined_output_folder(projection.destination_path))
         except (OSError, ValueError):
+            # Outside every allowed root, so it counts toward none of them.
             continue
     results = []
     for root in roots:

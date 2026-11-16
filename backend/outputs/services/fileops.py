@@ -31,10 +31,10 @@ from django.utils import timezone
 from catalog.artwork_views import _attached_picture_stream, _ffmpeg_executable
 from catalog.models import Channel
 from media.models import MediaFile
-from metadata.services import secure_nfo
 from metadata.services.provider_artwork import _backup_name
 from metadata.services.provider_match import MatchRequestError
 from outputs.models import Projection, ProjectionFile
+from outputs.security import ProjectionSecurityError, confined_output_folder
 
 Kind = ProjectionFile.Kind
 MAX_ART_BYTES = 25 * 1024 * 1024
@@ -73,7 +73,9 @@ _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
 _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 
 
-_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
+# Characters XML 1.0 doesn't allow: C0 controls other than tab, newline,
+# and carriage return, and the two noncharacters U+FFFE and U+FFFF.
+_XML_INVALID = dict.fromkeys([*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20), 0xFFFE, 0xFFFF])
 
 
 _CROSS_DEVICE_WINERRORS = (17,)  # ERROR_NOT_SAME_DEVICE
@@ -92,7 +94,7 @@ def safe_segment(value: Any, limit: int) -> str:
 
 
 def _clean(value: Any) -> str:
-    return _XML_INVALID.sub("", str(value or "")).strip()
+    return str(value or "").translate(_XML_INVALID).strip()
 
 
 def _xml(root_name: str, fields: list[tuple[str, Any, dict[str, str]]]) -> bytes:
@@ -165,22 +167,40 @@ class Action:
         }
 
 
+def folder_problem(exc: OSError) -> str:
+    """A plain explanation of why the output folder can't be used."""
+
+    if getattr(exc, "winerror", None) in (1326, 86, 1244, 5):
+        return (
+            "The output folder can't be reached: the computer running LibraryForge isn't signed in to that "
+            "network share. Sign in to the share and save the credentials, then try again."
+        )
+    reason = exc.strerror or "it isn't available"
+    return f"The output folder can't be reached ({reason})."
+
+
 def destination_error(projection) -> str | None:
     """None if the destination folder exists or can be created, else why not."""
 
     try:
-        destination = Path(projection.destination_path).expanduser()
+        destination = confined_output_folder(projection.destination_path)
         if destination.exists():
             return None if destination.is_dir() else "The destination isn't a folder."
         if not destination.parent.is_dir():
             return f"The destination's parent folder ({destination.parent}) doesn't exist."
+    except ProjectionSecurityError as exc:
+        return exc.message
     except OSError as exc:
-        return secure_nfo.library_root_problem(exc)
+        return folder_problem(exc)
     return None
 
 
 class _Conflict(Exception):
-    pass
+    """A file left alone. ``message`` is LibraryForge's own explanation."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
 
 
 class _CrossDevice(Exception):
@@ -188,7 +208,10 @@ class _CrossDevice(Exception):
 
 
 def _destination_root(projection) -> Path:
-    destination = Path(projection.destination_path).expanduser()
+    try:
+        destination = confined_output_folder(projection.destination_path)
+    except ProjectionSecurityError as exc:
+        raise MatchRequestError(exc.message, status=409) from exc
     if not destination.exists():
         destination.mkdir()
     root = destination.resolve(strict=True)

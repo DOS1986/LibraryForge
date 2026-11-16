@@ -181,7 +181,7 @@ class ProjectionSerializer(
         except ProjectionSecurityError as exc:
             raise serializers.ValidationError(
                 {
-                    "destination_path": str(exc)
+                    "destination_path": exc.message
                 }
             ) from exc
 

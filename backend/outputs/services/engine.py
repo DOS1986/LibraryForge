@@ -101,8 +101,11 @@ def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
         return findings + LAYOUTS[projection.layout].policy_findings(projection)
     try:
         validate_projection_destination(library=library, destination_path=projection.destination_path, user=user)
+        destination_problem = fileops.destination_error(projection)
     except ProjectionSecurityError as error:
-        findings.append(_finding("OUTSIDE_OUTPUT_ROOT", BLOCKING, str(error)))
+        findings.append(_finding("OUTSIDE_OUTPUT_ROOT", BLOCKING, error.message))
+        # A folder outside the output roots is never looked at on disk.
+        destination_problem = None
     if projection.link_mode == Projection.LinkMode.HARDLINK:
         if library.management_mode == Library.ManagementMode.READ_ONLY:
             findings.append(
@@ -123,7 +126,7 @@ def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
             )
     for code, problem in (
         ("SOURCE_UNAVAILABLE", secure_nfo.library_root_error(library)),
-        ("DESTINATION_UNAVAILABLE", fileops.destination_error(projection)),
+        ("DESTINATION_UNAVAILABLE", destination_problem),
     ):
         if problem:
             findings.append(_finding(code, BLOCKING, problem))
@@ -336,9 +339,8 @@ def build_plan(projection: Projection, *, user, channel: str | None = None, clea
                 actions, cleanup_findings, summary = _cleanup(projection, planned)
             except (OSError, MatchRequestError) as error:
                 actions, summary = [], {}
-                cleanup_findings = [
-                    _finding("DESTINATION_UNAVAILABLE", BLOCKING, getattr(error, "message", None) or str(error))
-                ]
+                problem = error.message if isinstance(error, MatchRequestError) else fileops.folder_problem(error)
+                cleanup_findings = [_finding("DESTINATION_UNAVAILABLE", BLOCKING, problem)]
             findings.extend(cleanup_findings)
             overview = {"cleanup": summary, "profile": profile}
         else:
@@ -746,9 +748,9 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
                     "library. Choose a destination next to the library folder, or use copies.",
                 )
             except fileops._Conflict as error:
-                result, state, message = "conflict", ProjectionRunAction.State.SKIPPED, str(error)
+                result, state, message = "conflict", ProjectionRunAction.State.SKIPPED, error.message
             except OSError as error:
-                result, state, message = "failed", ProjectionRunAction.State.FAILED, error.strerror or str(error)
+                result, state, message = "failed", ProjectionRunAction.State.FAILED, error.strerror or "The file system refused the change."
         journal.state, journal.result, journal.message = state, result, message
         journal.save(update_fields=["state", "result", "message", "updated_at"])
         counts[result] = counts.get(result, 0) + 1

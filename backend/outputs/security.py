@@ -1,10 +1,23 @@
+import os
 from pathlib import Path, PurePosixPath
 
 from django.conf import settings
 
 
 class ProjectionSecurityError(ValueError):
-    pass
+    """A projection folder or source that isn't allowed. ``message`` is
+    LibraryForge's own explanation, safe to show to the user."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+NO_OUTPUT_ROOTS = (
+    "No output folders are allowed yet. Set LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS on the LibraryForge server "
+    "to the folder(s) projections may write into, then restart it."
+)
+OUTSIDE_OUTPUT_ROOTS = "Projection destination is outside the output folders allowed by LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS."
 
 
 def _resolve(
@@ -34,6 +47,48 @@ def _inside(
         return False
 
 
+def _output_root_settings() -> list[str]:
+    return [str(value).strip() for value in getattr(settings, "LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS", []) if str(value).strip()]
+
+
+def _folder_key(value: str) -> str:
+    """An absolute, normalized form of ``value`` ending in a separator, worked
+    out from the text alone, without touching the disk."""
+
+    return os.path.join(os.path.normcase(os.path.normpath(os.path.abspath(os.path.expanduser(value)))), "")
+
+
+def confined_output_folder(destination_path: str) -> Path:
+    """The real path of ``destination_path`` if it's inside an allowed output
+    root, else ``ProjectionSecurityError``.
+
+    The text is checked against the roots before the disk is touched, so a
+    path elsewhere (another computer's share, say) is never looked up. The
+    real path, with links followed, is then checked again, so a link inside
+    a root can't lead out of it. Every use of a projection folder goes
+    through here first.
+    """
+
+    if not str(destination_path or "").strip():
+        raise ProjectionSecurityError("Projection destination path is required.")
+    roots = _output_root_settings()
+    if not roots:
+        raise ProjectionSecurityError(NO_OUTPUT_ROOTS)
+    key = _folder_key(str(destination_path))
+    if not any(key.startswith(_folder_key(root)) for root in roots):
+        raise ProjectionSecurityError(OUTSIDE_OUTPUT_ROOTS)
+
+    folder = os.path.join(os.path.realpath(os.path.expanduser(str(destination_path))), "")
+    real_roots = [os.path.join(os.path.realpath(os.path.expanduser(root)), "") for root in roots]
+    for real_root in real_roots:
+        if folder.startswith(real_root):
+            return Path(folder)
+    # Windows compares names without regard to case.
+    if any(os.path.normcase(folder).startswith(os.path.normcase(real_root)) for real_root in real_roots):
+        return Path(folder)
+    raise ProjectionSecurityError(OUTSIDE_OUTPUT_ROOTS)
+
+
 def overlapping_library(destination: Path):
     """A library whose folder contains, or sits inside, ``destination``."""
 
@@ -57,8 +112,9 @@ def overlapping_projection(path: Path):
     # In-place NFO output writes into its own library and has no output folder.
     for projection in Projection.objects.exclude(layout=Projection.Layout.LIBRARY_NFO).only("id", "name", "destination_path"):
         try:
-            destination = _resolve(projection.destination_path)
+            destination = confined_output_folder(projection.destination_path)
         except (OSError, ValueError):
+            # Outside every output root, so it can't be written to anyway.
             continue
         if _inside(path, destination) or _inside(destination, path):
             return projection
@@ -74,24 +130,7 @@ def validate_projection_destination(
     """The destination must be inside an allowed output root (required for
     everyone, development included) and separate from every library."""
 
-    if not str(destination_path or "").strip():
-        raise ProjectionSecurityError("Projection destination path is required.")
-    destination = _resolve(destination_path)
-
-    configured_roots = [
-        _resolve(value)
-        for value in getattr(settings, "LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS", [])
-        if str(value).strip()
-    ]
-    if not configured_roots:
-        raise ProjectionSecurityError(
-            "No output folders are allowed yet. Set LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS on the LibraryForge server "
-            "to the folder(s) projections may write into, then restart it."
-        )
-    if not any(_inside(destination, root) for root in configured_roots):
-        raise ProjectionSecurityError(
-            "Projection destination is outside the output folders allowed by LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS."
-        )
+    destination = confined_output_folder(destination_path)
 
     # Output and libraries must be disjoint in both directions, for every
     # library: scanning output would create duplicates, and a broad output

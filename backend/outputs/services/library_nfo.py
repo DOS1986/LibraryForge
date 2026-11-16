@@ -474,7 +474,10 @@ def apply_record(projection: Projection, record, library_root: Path) -> tuple[st
             return _delete_copy(projection, record, library_root)
         return _copy_art(projection, record, library_root)
     except ValueError as error:
-        raise _Conflict(str(error) or "The file couldn't be written.") from error
+        # These ValueErrors carry LibraryForge's own explanation (an NFO too
+        # large, unsafe, or not readable back).
+        reason = error.args[0] if error.args and isinstance(error.args[0], str) else ""
+        raise _Conflict(reason or "The file couldn't be written.") from error
 
 
 def _create_nfo(library: Library, record) -> tuple[str, str]:

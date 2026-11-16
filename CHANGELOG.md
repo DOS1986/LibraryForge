@@ -49,6 +49,7 @@ pre-1.0 development.
 * Changed show and episode NFOs to mark the TVDB ID as the default, then TMDB.
 * The NFO page's **Create missing NFOs** card is replaced by the NFO and artwork output panel. The `nfo-create` endpoint is unchanged.
 * Projection destinations now require `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` (development included) and must be separate from every library. Libraries can't be created over a projection's folder.
+* A projection's folder is checked against the allowed output roots every time it's used. A path outside them is refused before LibraryForge looks it up on disk, and a link inside a root can't lead out of it.
 
 ### Removed
 
