@@ -160,7 +160,7 @@ A projection's output profile names its media server. Every profile uses the sam
 | Episode thumb | `<file>-thumb` | `<file>-thumb` | `<file>-thumb` | `<file>-thumb` |
 | Checked against | the maintainer's server | Emby's Movie and TV naming articles | Kodi's scanner source | |
 
-* **Verification:** Emby and Kodi are built to these conventions but not yet verified on a live server. Plans for them say so.
+* **Verification:** Jellyfin is verified on a live server. Emby and Kodi are built to these conventions but not yet verified on a live server. Plans for them say so.
 * **Kodi setup:**
   * Use the **Local information only** scraper so Kodi reads the NFOs and their ratings.
   * By default Kodi picks up only poster and fanart for movies, and poster, fanart, and banner for shows. Set **Settings > Media > Videos > Artwork level** to **Maximum** for logos and landscape art.

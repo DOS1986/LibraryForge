@@ -1,6 +1,6 @@
 # 0.1.0-alpha.6 — Projection and Output Engine (design)
 
-Status: approved 16 November 2026. Phases 1 to 5 implemented (see PROJECTIONS.md); Jellyfin live verification is pending.
+Status: approved 16 November 2026. Phases 1 to 5 implemented (see PROJECTIONS.md) and verified live on Jellyfin. Released in 0.1.0-alpha.6.
 
 This design adapts the reconstructed "LibraryForge Projection and Output Engine" document (ChatGPT, 16 November 2026) to how LibraryForge is used today and to an alpha-sized scope. Where this document differs from that one, this one is the plan, and the reason is given.
 
