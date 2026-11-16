@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 from django.conf import settings
@@ -212,13 +213,15 @@ class Command(BaseCommand):
         heartbeat(worker_id, None)
         try:
             execute_run(run)
-        except Exception as exc:  # noqa: BLE001 - recorded on the run, so the worker keeps going
+        except Exception:  # noqa: BLE001 - recorded on the run, so the worker keeps going
             run.refresh_from_db()
             run.status = run.Status.FAILED
-            run.error = str(exc)[:2000]
+            # The run's error is shown in the app, so it gets a plain message;
+            # the details go to the worker's log.
+            run.error = "The run stopped because of an unexpected error. The scan worker's log has the details."
             run.completed_at = timezone.now()
             run.save()
-            self.stderr.write(self.style.ERROR(str(exc)))
+            self.stderr.write(self.style.ERROR(f"Projection run {run.id} failed:\n{traceback.format_exc()}"))
         finally:
             heartbeat(worker_id, None)
         return True

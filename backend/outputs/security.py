@@ -78,14 +78,14 @@ def confined_output_folder(destination_path: str) -> Path:
     if not any(key.startswith(_folder_key(root)) for root in roots):
         raise ProjectionSecurityError(OUTSIDE_OUTPUT_ROOTS)
 
-    folder = os.path.join(os.path.realpath(os.path.expanduser(str(destination_path))), "")
-    real_roots = [os.path.join(os.path.realpath(os.path.expanduser(root)), "") for root in roots]
-    for real_root in real_roots:
-        if folder.startswith(real_root):
+    # The real path spells every existing folder the way the disk does
+    # (Windows letter case included), so the comparison is exact. This is the
+    # function's only way out with a path.
+    folder = os.path.realpath(os.path.expanduser(str(destination_path)))
+    for root in roots:
+        real_root = os.path.realpath(os.path.expanduser(root)).rstrip("\\/")
+        if folder.startswith(real_root) and folder[len(real_root) : len(real_root) + 1] in ("", "\\", "/"):
             return Path(folder)
-    # Windows compares names without regard to case.
-    if any(os.path.normcase(folder).startswith(os.path.normcase(real_root)) for real_root in real_roots):
-        return Path(folder)
     raise ProjectionSecurityError(OUTSIDE_OUTPUT_ROOTS)
 
 

@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
+from unittest import mock, skipUnless
 
 from django.test import SimpleTestCase, override_settings
 
@@ -66,13 +66,16 @@ class ConfinedOutputFolderTests(SimpleTestCase):
             self.skipTest("This system can't create symbolic links.")
         self.refused(str(link / "Movies"))
 
-    @mock.patch("outputs.security.os.path.normcase", side_effect=str.casefold)
-    def test_case_differences_are_allowed_where_names_ignore_case(self, _normcase):
+    def test_a_root_that_does_not_exist_yet_can_be_the_folder(self):
+        new = self.tmp / "new"
+        with override_settings(LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS=[str(new)]):
+            self.assertEqual(confined_output_folder(str(new)), new)
+            self.assertEqual(confined_output_folder(str(new / "Shows")), new / "Shows")
+
+    @skipUnless(os.name == "nt", "Only Windows folder names ignore letter case.")
+    def test_case_differences_are_allowed_where_names_ignore_case(self):
         spelled = str(self.root).swapcase() + os.sep + "Movies"
-        with override_settings(LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS=[str(self.root)]):
-            self.assertEqual(
-                confined_output_folder(spelled).as_posix().casefold(), (self.root / "Movies").as_posix().casefold()
-            )
+        self.assertEqual(confined_output_folder(spelled), self.root / "Movies")
 
 
 class DestinationUseTests(SimpleTestCase):
@@ -128,3 +131,32 @@ class PlanOutsideRootsTests(_Movies):
         destination_error.assert_not_called()
         message = next(f["message"] for f in plan["findings"] if f["code"] == "OUTSIDE_OUTPUT_ROOT")
         self.assertEqual(message, OUTSIDE_OUTPUT_ROOTS)
+
+
+class WorkerCrashMessageTests(_Movies):
+    def test_an_unexpected_error_is_recorded_without_its_text(self):
+        import io
+
+        from jobs.management.commands.run_scan_worker import Command
+        from outputs.models import ProjectionRun
+
+        projection = self.create(self.movies)
+        plan = self.plan(projection)
+        queued = self.client.post(
+            f"/api/projection-plans/{plan['id']}/runs/",
+            {"digest": plan["digest"], "idempotency_key": "crash-1"},
+            format="json",
+        )
+        self.assertEqual(queued.status_code, 202, queued.data)
+
+        command = Command(stdout=io.StringIO(), stderr=io.StringIO())
+        with mock.patch(
+            "jobs.management.commands.run_scan_worker.execute_run", side_effect=RuntimeError("secret detail")
+        ):
+            self.assertTrue(command._run_projection("worker-1", None))
+
+        run = ProjectionRun.objects.get(id=queued.data["id"])
+        self.assertEqual(run.status, ProjectionRun.Status.FAILED)
+        self.assertNotIn("secret detail", run.error)
+        self.assertIn("unexpected error", run.error)
+        self.assertIn("secret detail", command.stderr._out.getvalue())
