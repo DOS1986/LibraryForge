@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
+import { NfoSyncPanel } from "@/components/catalog/NfoSyncPanel"
 
 import {
   Badge,
@@ -2881,8 +2882,15 @@ export function CatalogItemEditorDialog({
 
                 <TabsContent
                   value="nfo"
-                  className="mt-5"
+                  className="mt-5 space-y-5"
                 >
+                  {detail.kind !== "season" && (
+                    <NfoSyncPanel
+                      kind={detail.kind}
+                      id={detail.id}
+                      onWritten={refreshAfterChange}
+                    />
+                  )}
                   <NfoTab
                     detail={detail}
                     onChanged={

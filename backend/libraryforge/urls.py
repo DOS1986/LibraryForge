@@ -15,6 +15,12 @@ from catalog.artwork_views import (
     library_artwork_refresh,
 )
 
+from catalog.nfo_editor_views import (
+    channel_editor,
+    item_nfo_view,
+    library_nfo_create_view,
+    online_video_editor,
+)
 from catalog.editor_views import (
     episode_editor,
     media_version_editor,
@@ -266,6 +272,26 @@ urlpatterns = [
         name="library-artwork-refresh",
     ),
 
+    path(
+        "api/catalog-editor/online-videos/<uuid:video_id>/",
+        online_video_editor,
+        name="catalog-editor-online-video",
+    ),
+    path(
+        "api/catalog-editor/channels/<uuid:channel_id>/",
+        channel_editor,
+        name="catalog-editor-channel",
+    ),
+    path(
+        "api/catalog-editor/<str:kind>/<uuid:item_id>/nfo/",
+        item_nfo_view,
+        name="catalog-editor-nfo",
+    ),
+    path(
+        "api/libraries/<uuid:library_id>/nfo-create/",
+        library_nfo_create_view,
+        name="library-nfo-create",
+    ),
     path(
         "api/catalog-editor/movies/<uuid:item_id>/",
         movie_editor,

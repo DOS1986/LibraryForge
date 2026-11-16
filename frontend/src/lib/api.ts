@@ -56,6 +56,13 @@ import type {
   YouTubeRatingHints,
   ArtworkChoices,
   ArtworkSaveResult,
+  ChannelEditorDetail,
+  NfoComparison,
+  NfoCreateBatch,
+  NfoCreatePreview,
+  NfoSyncKind,
+  NfoWriteResult,
+  OnlineVideoEditorDetail,
 } from "@/types"
 
 
@@ -1428,6 +1435,65 @@ export async function previewMetadataMatch(
   return request<MetadataMatchPreview>(
     metadataMatchPath(kind, id, "preview") + queryString(params),
   )
+}
+
+
+// Online videos and channels: hand edits are locked against later scans.
+export async function getOnlineVideoEditor(id: string) {
+  return request<OnlineVideoEditorDetail>(`/api/catalog-editor/online-videos/${id}/`)
+}
+
+
+export async function updateOnlineVideoEditor(id: string, values: Record<string, unknown>) {
+  await ensureCsrf()
+  return request<OnlineVideoEditorDetail>(`/api/catalog-editor/online-videos/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(values),
+  })
+}
+
+
+export async function getChannelEditor(id: string) {
+  return request<ChannelEditorDetail>(`/api/catalog-editor/channels/${id}/`)
+}
+
+
+export async function updateChannelEditor(id: string, values: Record<string, unknown>) {
+  await ensureCsrf()
+  return request<ChannelEditorDetail>(`/api/catalog-editor/channels/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(values),
+  })
+}
+
+
+// LibraryForge's fields compared with the item's NFO.
+export async function getItemNfo(kind: NfoSyncKind, id: string) {
+  return request<NfoComparison>(`/api/catalog-editor/${kind}/${id}/nfo/`)
+}
+
+
+// Writes the chosen fields into the NFO (or creates it). Omit fields for every difference.
+export async function writeItemNfo(kind: NfoSyncKind, id: string, fields?: string[]) {
+  await ensureCsrf()
+  return request<NfoWriteResult>(`/api/catalog-editor/${kind}/${id}/nfo/`, {
+    method: "POST",
+    body: JSON.stringify(fields ? { fields } : {}),
+  })
+}
+
+
+export async function previewNfoCreate(libraryId: string, kind: "movie" | "series") {
+  return request<NfoCreatePreview>(`/api/libraries/${libraryId}/nfo-create/` + queryString({ kind }))
+}
+
+
+export async function createNfoBatch(libraryId: string, kind: "movie" | "series", cursor: string | null, batch: number) {
+  await ensureCsrf()
+  return request<NfoCreateBatch>(`/api/libraries/${libraryId}/nfo-create/`, {
+    method: "POST",
+    body: JSON.stringify({ kind, cursor, batch }),
+  })
 }
 
 

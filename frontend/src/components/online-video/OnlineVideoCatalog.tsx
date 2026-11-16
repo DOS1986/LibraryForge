@@ -5,7 +5,10 @@ import {
   useState,
 } from "react"
 
+import { Pencil } from "lucide-react"
 import { Link } from "react-router-dom"
+
+import { OnlineVideoEditorDialog, type OnlineEditorTarget } from "@/components/catalog/OnlineVideoEditorDialog"
 
 import {
   ArrowDown,
@@ -1170,10 +1173,12 @@ function ChannelDialog({
   channel,
   onClose,
   onOpenVideo,
+  onEdit,
 }: {
   channel: OnlineVideoChannel | null
   onClose: () => void
   onOpenVideo: (video: OnlineVideoCatalogItem) => void
+  onEdit: (channel: OnlineVideoChannel) => void
 }) {
   return (
     <Dialog
@@ -1188,9 +1193,15 @@ function ChannelDialog({
         {channel && (
           <>
             <ScrollableDialogHeader>
-              <DialogTitle>
-                {channel.title || channel.source_id}
-              </DialogTitle>
+              <div className="flex flex-wrap items-center justify-between gap-3 pr-10">
+                <DialogTitle>
+                  {channel.title || channel.source_id}
+                </DialogTitle>
+                <Button type="button" size="sm" variant="outline" onClick={() => onEdit(channel)}>
+                  <Pencil />
+                  Edit
+                </Button>
+              </div>
             </ScrollableDialogHeader>
 
             <ScrollableDialogBody>
@@ -1366,10 +1377,12 @@ function VideoDialog({
   video,
   onClose,
   onOpenMediaDetails,
+  onEdit,
 }: {
   video: OnlineVideoCatalogItem | null
   onClose: () => void
   onOpenMediaDetails: (mediaItemId: string) => void
+  onEdit: (video: OnlineVideoCatalogItem) => void
 }) {
   return (
     <Dialog
@@ -1384,9 +1397,15 @@ function VideoDialog({
         {video && (
           <>
             <ScrollableDialogHeader>
-              <DialogTitle>
-                {video.title || video.source_id}
-              </DialogTitle>
+              <div className="flex flex-wrap items-center justify-between gap-3 pr-10">
+                <DialogTitle>
+                  {video.title || video.source_id}
+                </DialogTitle>
+                <Button type="button" size="sm" variant="outline" onClick={() => onEdit(video)}>
+                  <Pencil />
+                  Edit
+                </Button>
+              </div>
             </ScrollableDialogHeader>
 
             <ScrollableDialogBody>
@@ -1595,6 +1614,7 @@ export function OnlineVideoCatalog({
   const [selectedPlaylist, setSelectedPlaylist] = useState<OnlineVideoPlaylist | null>(null)
   const [selectedVideo, setSelectedVideo] = useState<OnlineVideoCatalogItem | null>(null)
   const [selectedMediaItemId, setSelectedMediaItemId] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<OnlineEditorTarget>(null)
   const [artworkRevision, setArtworkRevision] = useState(0)
   const [refreshingArtwork, setRefreshingArtwork] = useState(false)
   const [artworkError, setArtworkError] = useState<string | null>(null)
@@ -1707,6 +1727,10 @@ export function OnlineVideoCatalog({
         channel={selectedChannel}
         onClose={() => setSelectedChannel(null)}
         onOpenVideo={openVideo}
+        onEdit={channel => {
+          setSelectedChannel(null)
+          setEditTarget({ kind: "channel", id: channel.id })
+        }}
       />
 
       <PlaylistDialog
@@ -1719,6 +1743,15 @@ export function OnlineVideoCatalog({
         video={selectedVideo}
         onClose={() => setSelectedVideo(null)}
         onOpenMediaDetails={openMediaDetails}
+        onEdit={video => {
+          setSelectedVideo(null)
+          setEditTarget({ kind: "online_video", id: video.id })
+        }}
+      />
+      <OnlineVideoEditorDialog
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => setArtworkRevision(value => value + 1)}
       />
 
       <MediaDetailDialog

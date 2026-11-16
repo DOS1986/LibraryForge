@@ -624,6 +624,108 @@ export interface Projection {
   updated_at: string
 }
 
+export interface EditorFieldState {
+  field_name: string
+  source: string
+  source_label: string
+  locked: boolean
+}
+
+export interface EditorHistoryEntry {
+  id: string
+  source: string
+  source_label: string
+  changes: Record<string, { old: unknown; new: unknown }>
+  note: string
+  created_at: string
+}
+
+export interface OnlineVideoEditorDetail {
+  kind: "online_video"
+  id: string
+  library_id: string
+  provider: string
+  source_id: string
+  source_url: string
+  title: string
+  description: string
+  content_rating: string
+  upload_date: string | null
+  video_kind: string
+  video_kind_label: string
+  tags: string[]
+  channel: { id: string; title: string; content_rating: string } | null
+  files: string[]
+  field_states: EditorFieldState[]
+  history: EditorHistoryEntry[]
+}
+
+export interface ChannelEditorDetail {
+  kind: "channel"
+  id: string
+  library_id: string
+  provider: string
+  source_id: string
+  source_url: string
+  handle: string
+  title: string
+  sort_title: string
+  description: string
+  content_rating: string
+  video_count: number
+  field_states: EditorFieldState[]
+  history: EditorHistoryEntry[]
+}
+
+export type NfoSyncKind = "movies" | "series" | "episodes"
+export type NfoFieldStatus = "same" | "different" | "missing" | "empty" | "nfo_only"
+
+export interface NfoFieldRow {
+  tag: string
+  label: string
+  list: boolean
+  libraryforge: string | string[]
+  nfo: string | string[] | null
+  status: NfoFieldStatus
+}
+
+export interface NfoComparison {
+  kind: "movie" | "series" | "episode"
+  id: string
+  title: string
+  nfo: { exists: boolean; id: string | null; path: string | null; root_element: string }
+  problem: string | null
+  writable: boolean
+  root_error: string | null
+  fields: NfoFieldRow[]
+}
+
+export interface NfoWriteResult {
+  result: "created" | "updated" | "unchanged"
+  path: string
+  written: string[]
+  comparison: NfoComparison
+}
+
+export interface NfoCreatePreview {
+  library_id: string
+  kind: "movie" | "series"
+  writable: boolean
+  root_error: string | null
+  missing: number
+  ready: number
+  blocked: number
+  rows: { id: string; title: string; path: string; problem: string }[]
+  rows_truncated: boolean
+}
+
+export interface NfoCreateBatch {
+  created: number
+  problems: { title: string; path: string; message: string }[]
+  next_cursor: string | null
+  remaining: number
+}
+
 export type ShowsAction = "create" | "update" | "relink" | "replace" | "delete" | "artwork"
 
 export type ShowsResult =
