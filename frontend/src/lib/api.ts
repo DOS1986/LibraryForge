@@ -35,8 +35,6 @@ import type {
   OutputProfile,
   Paginated,
   Projection,
-  ProjectionPreview,
-  ProjectionRunResult,
   RestartRequestResult,
   ScanJob,
   ScanWorkerStatus,
@@ -50,12 +48,16 @@ import type {
   User,
   UserSettings,
   UserSettingsUpdate,
-  ShowsPlan,
-  ShowsSyncBatch,
   YouTubeHintApplyResult,
   YouTubeRatingHints,
   ArtworkChoices,
   ArtworkSaveResult,
+  Paged,
+  PlanActionRow,
+  ProjectionPlanDetail,
+  ProjectionRunDetail,
+  ProjectionRunsSummary,
+  RunJournalRow,
   ChannelEditorDetail,
   NfoComparison,
   NfoCreateBatch,
@@ -1072,103 +1074,87 @@ export async function getProjections(
 }
 
 
-export async function createProjection(
-  input: {
-    library: string
-    output_profile: string
-    name: string
-    destination_path: string
-    link_mode:
-      | "symlink"
-      | "hardlink"
-      | "copy"
-    naming_template: string
-    generate_nfo: boolean
-  },
-) {
-  await ensureCsrf()
-
-  return request<
-    Projection
-  >(
-    "/api/projections/",
-    {
-      method: "POST",
-      body: JSON.stringify(
-        input
-      ),
-    },
-  )
-}
-
-
 // Channels as TV shows: a Jellyfin-ready folder of hardlinked, renamed videos.
 export async function getYouTubeShows(libraryId: string) {
   return request<Projection[]>(`/api/libraries/${libraryId}/youtube-shows/`)
 }
 
 
-export async function createYouTubeShows(libraryId: string, destinationPath: string) {
+export async function createYouTubeShows(libraryId: string, destinationPath: string, hardlinkAcknowledged: boolean) {
   await ensureCsrf()
 
   return request<Projection>(
     `/api/libraries/${libraryId}/youtube-shows/`,
     {
       method: "POST",
-      body: JSON.stringify({ destination_path: destinationPath }),
+      body: JSON.stringify({ destination_path: destinationPath, hardlink_acknowledged: hardlinkAcknowledged }),
     },
   )
 }
 
 
-// What a sync would change; computed from the database only.
-export async function getYouTubeShowsPlan(projectionId: string, channel?: string) {
-  return request<ShowsPlan>(
-    `/api/projections/${projectionId}/shows-plan/` + queryString({ channel: channel || undefined }),
-  )
-}
-
-
-// Applies one batch of the plan, starting after the cursor.
-export async function syncYouTubeShows(
+// Projection settings (never touches disk).
+export async function updateProjection(
   projectionId: string,
-  input: { cursor: string | null; batch: number; channel: string | null },
+  values: Partial<Pick<Projection, "stale_policy" | "hardlink_acknowledged" | "enabled">>,
 ) {
   await ensureCsrf()
-
-  return request<ShowsSyncBatch>(
-    `/api/projections/${projectionId}/shows-sync/`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  )
+  return request<Projection>(`/api/projections/${projectionId}/`, { method: "PATCH", body: JSON.stringify(values) })
 }
 
 
-export async function previewProjection(
-  projectionId: string,
-) {
-  return request<
-    ProjectionPreview
-  >(
-    `/api/projections/${projectionId}/preview/`,
-  )
-}
-
-
-export async function runProjection(
-  projectionId: string,
-) {
+export async function deleteProjection(projectionId: string) {
   await ensureCsrf()
+  return request<null>(`/api/projections/${projectionId}/`, { method: "DELETE" })
+}
 
-  return request<
-    ProjectionRunResult
-  >(
-    `/api/projections/${projectionId}/run/`,
-    {
-      method: "POST",
-    },
+
+// Build a stored plan to review. Reads only; changes nothing on disk.
+export async function buildProjectionPlan(projectionId: string, channel?: string) {
+  await ensureCsrf()
+  return request<ProjectionPlanDetail>(`/api/projections/${projectionId}/plans/`, {
+    method: "POST",
+    body: JSON.stringify(channel ? { channel } : {}),
+  })
+}
+
+
+export async function getProjectionPlanActions(planId: string, page: number, action?: string) {
+  return request<Paged<PlanActionRow>>(
+    `/api/projection-plans/${planId}/actions/` + queryString({ page, action: action || undefined }),
+  )
+}
+
+
+// Apply exactly the reviewed plan in the background worker.
+export async function requestProjectionRun(planId: string, digest: string, idempotencyKey: string) {
+  await ensureCsrf()
+  return request<ProjectionRunDetail>(`/api/projection-plans/${planId}/runs/`, {
+    method: "POST",
+    body: JSON.stringify({ digest, idempotency_key: idempotencyKey }),
+  })
+}
+
+
+export async function getProjectionRun(runId: string) {
+  return request<ProjectionRunDetail>(`/api/projection-runs/${runId}/`)
+}
+
+
+export async function cancelProjectionRun(runId: string) {
+  await ensureCsrf()
+  return request<ProjectionRunDetail>(`/api/projection-runs/${runId}/cancel/`, { method: "POST" })
+}
+
+
+export async function getProjectionRuns(projectionId: string) {
+  return request<ProjectionRunsSummary>(`/api/projections/${projectionId}/runs/`)
+}
+
+
+export async function getProjectionRunJournal(runId: string, problemsOnly = true) {
+  return request<Paged<RunJournalRow>>(
+    `/api/projection-runs/${runId}/actions/` + queryString({ problems: problemsOnly ? 1 : undefined, page_size: 200 }),
   )
 }
 

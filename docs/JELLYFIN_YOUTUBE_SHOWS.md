@@ -36,17 +36,23 @@ A hardlink is a second name for the same file. The videos use no extra disk spac
 
 ## Syncing
 
-1. **Set up the folder.** Choose a destination outside the library. It must be inside `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` when that's configured. In production without it, only staff users can choose a destination.
-2. **Check.** This lists what a sync would add, update, relink, replace, or remove, per channel. It reads only the database.
-3. **Sync** all channels or one at a time. Changes are applied 25 at a time, with progress and Stop. Only one sync per folder runs at a time.
+1. **Set up the folder.** Choose a destination outside every library, inside a folder listed in `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` (required, development included). Confirm the hardlink policy: a hardlink is the same file as the original under a second name, so nothing should write into videos through the output folder. Hardlinks are refused for Read Only libraries; a projection can use copies instead.
+2. **Check for changes.** This builds a stored plan of what would be added, updated, relinked, replaced, removed, or kept, per channel. It reads only, except the first time after an upgrade, when it checks the files written before run history existed (section Safety). Click a count to list those changes.
+3. **Apply the reviewed plan.** The background worker (`run_scan_worker`) applies exactly that plan, with progress and Cancel. A plan expires after 30 minutes (`LIBRARYFORGE_PROJECTION_PLAN_MINUTES`) and is refused if the output changed since it was built; build a new one.
+4. **History.** Every run is kept with its counts, problems, and a per-file journal.
 
 After the first sync, later syncs pick up new downloads, removed videos, renamed titles (the file is renamed and keeps its episode number), changed descriptions, and changed ratings. For example, changing a channel's rating on the Ratings tab updates its `tvshow.nfo` and every episode NFO on the next sync.
+
+**Deleted videos.** By default, files whose video is gone are removed (so the hardlink stops using space), but only files LibraryForge created that are unchanged. They're kept instead, with a note, while a scan is running, when the library's last scan didn't finish, or when the library folder can't be reached. "Keep them" is available per projection.
 
 ## Safety
 
 - **Manifest.** Every file LibraryForge writes there is recorded (`outputs.ProjectionFile`). A sync replaces or deletes only those files. Anything else in the destination, such as your own files or files another tool wrote, is reported as a conflict and left alone.
 - **Changed files.** A recorded file is replaced or deleted only if it's unchanged: the same content for NFOs and images, the same size for video links. A file edited by hand is left in place and reported.
-- **Interrupted syncs.** Files left by an interrupted sync are adopted when they're exactly what would be written (the same file for videos, identical content for the rest).
+- **Run journal.** Each change is recorded as started before the disk is touched, then as done, skipped, or failed. After an interrupted run, a file is adopted only where the journal shows that run was creating it and it's exactly what would be written; a matching file alone is never adopted.
+- **Before each change.** The run rechecks the output's recorded state and the source file's size; anything that changed since the plan was built is skipped and reported.
+- **Files from before run history.** Files written by alpha.5 are verified once, on the first plan: links must still be the same file as their source and NFOs and images must have the recorded hash. Verified files are kept, missing ones are recreated, and anything else is left alone.
+- **Output isn't a library.** A projection's folder can't overlap any library, and a library can't be created over a projection's folder.
 - **Folders.** Folders are only removed when a sync leaves them empty.
 - **Confined paths.** Paths can't leave the destination, including through links or junctions inside it. Source files are confined to the library folder and only read.
 - **Library mode.** Read Only libraries can be checked but not synced; switch the library to Sidecar Only first.
@@ -60,7 +66,9 @@ After the first sync, later syncs pick up new downloads, removed videos, renamed
 
 ## API
 
-- `GET /api/libraries/<id>/youtube-shows/` lists the library's Channels as TV shows projections. `POST` with `{"destination_path": "..."}` creates one. It always uses hardlinks and creates a "Jellyfin" output profile if you have none.
-- `GET /api/projections/<id>/shows-plan/?channel=<channel id>` returns the plan: a summary by action, per-channel counts and folders, up to 200 planned changes, and any problem with the library or destination folder.
-- `POST /api/projections/<id>/shows-sync/` with `{"cursor": null, "batch": 25, "channel": null}` applies one batch. It returns counts, problems, `next_cursor` (null when finished), `remaining`, and `error` when the sync had to stop.
-- The template projection `preview` and `run` endpoints refuse this layout.
+- `GET /api/libraries/<id>/youtube-shows/` lists the library's Channels as TV shows projections. `POST` with `{"destination_path": "...", "hardlink_acknowledged": true}` creates one, with a "Jellyfin" output profile if you have none.
+- `PATCH /api/projections/<id>/` changes `stale_policy` (`remove_owned` or `keep`), `hardlink_acknowledged`, or `enabled`. It never touches disk.
+- `POST /api/projections/<id>/plans/` (optional `{"channel": "<id>"}`) builds a plan. It returns its status, digest, counts, findings, overview (channels, folders), and the first 100 changes. `GET /api/projection-plans/<id>/actions/?page=&action=` pages through all of them.
+- `POST /api/projection-plans/<id>/runs/` with `{"digest", "idempotency_key"}` queues a run (202). A repeated key returns the same run. A stale, expired, or blocked plan is refused (409 or 422).
+- `GET /api/projection-runs/<id>/`, `GET /api/projection-runs/<id>/actions/?problems=1`, and `POST /api/projection-runs/<id>/cancel/` show progress and the journal, and cancel.
+- `GET /api/projections/<id>/runs/` lists recent runs and the number of managed files.

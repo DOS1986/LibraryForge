@@ -34,97 +34,72 @@ def _inside(
         return False
 
 
+def overlapping_library(destination: Path):
+    """A library whose folder contains, or sits inside, ``destination``."""
+
+    from libraries.models import Library
+
+    for library in Library.objects.all().only("id", "name", "path"):
+        try:
+            root = _resolve(library.path)
+        except (OSError, ValueError):
+            continue
+        if _inside(destination, root) or _inside(root, destination):
+            return library
+    return None
+
+
+def overlapping_projection(path: Path):
+    """A projection whose output folder contains, or sits inside, ``path``."""
+
+    from outputs.models import Projection
+
+    for projection in Projection.objects.all().only("id", "name", "destination_path"):
+        try:
+            destination = _resolve(projection.destination_path)
+        except (OSError, ValueError):
+            continue
+        if _inside(path, destination) or _inside(destination, path):
+            return projection
+    return None
+
+
 def validate_projection_destination(
     *,
     library,
     destination_path: str,
     user,
 ) -> Path:
-    if not str(
-        destination_path
-        or ""
-    ).strip():
-        raise ProjectionSecurityError(
-            "Projection destination path is required."
-        )
+    """The destination must be inside an allowed output root (required for
+    everyone, development included) and separate from every library."""
 
-    destination = _resolve(
-        destination_path
-    )
-
-    source_root = _resolve(
-        library.path
-    )
-
-    # Projection output and source library roots must be disjoint.
-    # Blocking both directions prevents a broad destination root from
-    # accidentally rendering a path back into the source library.
-    if (
-        _inside(
-            destination,
-            source_root,
-        )
-        or _inside(
-            source_root,
-            destination,
-        )
-    ):
-        raise ProjectionSecurityError(
-            "Projection output must be separate "
-            "from the source library tree."
-        )
+    if not str(destination_path or "").strip():
+        raise ProjectionSecurityError("Projection destination path is required.")
+    destination = _resolve(destination_path)
 
     configured_roots = [
-        _resolve(
-            value
-        )
-        for value in getattr(
-            settings,
-            "LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS",
-            [],
-        )
+        _resolve(value)
+        for value in getattr(settings, "LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS", [])
         if str(value).strip()
     ]
-
-    if configured_roots:
-        if not any(
-            _inside(
-                destination,
-                root,
-            )
-            for root in configured_roots
-        ):
-            raise ProjectionSecurityError(
-                "Projection destination is outside "
-                "the output roots allowed by the "
-                "LibraryForge server."
-            )
-
-        return destination
-
-    if settings.DEBUG:
-        return destination
-
-    if not (
-        getattr(
-            user,
-            "is_staff",
-            False,
-        )
-        or getattr(
-            user,
-            "is_superuser",
-            False,
-        )
-    ):
+    if not configured_roots:
         raise ProjectionSecurityError(
-            "The server operator has not configured "
-            "LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS. "
-            "Only staff users may select arbitrary "
-            "projection destinations until an "
-            "allowlist is configured."
+            "No output folders are allowed yet. Set LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS on the LibraryForge server "
+            "to the folder(s) projections may write into, then restart it."
+        )
+    if not any(_inside(destination, root) for root in configured_roots):
+        raise ProjectionSecurityError(
+            "Projection destination is outside the output folders allowed by LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS."
         )
 
+    # Output and libraries must be disjoint in both directions, for every
+    # library: scanning output would create duplicates, and a broad output
+    # folder must never render into a source tree.
+    clash = overlapping_library(destination)
+    if clash is not None:
+        raise ProjectionSecurityError(
+            f'Projection output must be separate from every library folder; it overlaps the "{clash.name}" library.'
+        )
     return destination
 
 

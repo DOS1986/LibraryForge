@@ -2,44 +2,74 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 
 import { JellyfinRefreshCard } from "@/components/jellyfin/JellyfinPanels"
 
 import {
+  buildProjectionPlan,
+  cancelProjectionRun,
   createYouTubeShows,
+  deleteProjection,
+  getProjectionPlanActions,
+  getProjectionRun,
+  getProjectionRunJournal,
+  getProjectionRuns,
   getYouTubeShows,
-  getYouTubeShowsPlan,
-  syncYouTubeShows,
+  requestProjectionRun,
+  updateProjection,
 } from "@/lib/api"
+import { formatDateTime } from "@/lib/format"
+import { newOperationId } from "@/lib/ids"
 
 import type {
+  Paged,
+  PlanActionKind,
+  PlanActionRow,
   Projection,
-  ShowsAction,
-  ShowsPlan,
-  ShowsProblem,
-  ShowsResult,
+  ProjectionPlanDetail,
+  ProjectionRunDetail,
+  ProjectionRunsSummary,
+  RunJournalRow,
 } from "@/types"
 
 
-const ACTION_LABELS: Record<ShowsAction, string> = {
+const ACTION_LABELS: Record<PlanActionKind, string> = {
   create: "To add",
   update: "To update",
   relink: "To relink",
   replace: "To replace",
   delete: "To remove",
   artwork: "Artwork to fetch",
+  retain: "Kept (source gone)",
 }
 
-const ACTION_ORDER: ShowsAction[] = ["create", "update", "relink", "replace", "delete", "artwork"]
+const ACTION_ORDER: PlanActionKind[] = ["create", "update", "relink", "replace", "delete", "artwork", "retain"]
+
+const RESULT_LABELS: Record<string, string> = {
+  created: "added",
+  updated: "updated",
+  relinked: "relinked",
+  deleted: "removed",
+  artwork: "artwork fetched",
+  adopted: "recovered",
+  kept: "left in place",
+  conflict: "left alone",
+  failed: "failed",
+}
+
+const RUN_VARIANT: Record<string, "success" | "warning" | "destructive" | "default" | "secondary"> = {
+  succeeded: "success",
+  completed_with_errors: "warning",
+  failed: "destructive",
+  interrupted: "warning",
+  cancelled: "secondary",
+  queued: "secondary",
+  running: "default",
+}
 
 const KIND_LABELS: Record<string, string> = {
   video: "Video",
@@ -51,9 +81,7 @@ const KIND_LABELS: Record<string, string> = {
   artwork: "Channel artwork",
 }
 
-const BATCH_SIZE = 25
-
-const SELECT_CLASS = "h-9 rounded-md border bg-background px-2 text-sm"
+const SELECT_CLASS = "h-9 rounded-lg border bg-card px-2 text-sm shadow-xs"
 
 
 function errorMessage(error: unknown, fallback: string) {
@@ -70,73 +98,92 @@ function suggestedDestination(libraryPath: string) {
 }
 
 
-export function YouTubeShowsPanel({
-  libraryId,
-  libraryPath,
-}: {
-  libraryId: string
-  libraryPath: string
-}) {
+function resultSummary(counts: Record<string, number>) {
+  const parts = Object.entries(counts)
+    .filter(([, value]) => value > 0)
+    .map(([key, value]) => `${value} ${RESULT_LABELS[key] ?? key}`)
+  return parts.length ? parts.join(", ") : "Nothing changed"
+}
+
+
+export function YouTubeShowsPanel({ libraryId, libraryPath }: { libraryId: string; libraryPath: string }) {
   const [projections, setProjections] = useState<Projection[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [destination, setDestination] = useState(() => suggestedDestination(libraryPath))
+  const [acknowledge, setAcknowledge] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
   const [channel, setChannel] = useState("")
-  const [plan, setPlan] = useState<ShowsPlan | null>(null)
-  const [checking, setChecking] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  const [totals, setTotals] = useState<Record<ShowsResult, number> | null>(null)
-  const [problems, setProblems] = useState<ShowsProblem[]>([])
+  const [plan, setPlan] = useState<ProjectionPlanDetail | null>(null)
+  const [actions, setActions] = useState<Paged<PlanActionRow> | null>(null)
+  const [actionFilter, setActionFilter] = useState("")
+  const [building, setBuilding] = useState(false)
+  const [run, setRun] = useState<ProjectionRunDetail | null>(null)
+  const [history, setHistory] = useState<ProjectionRunsSummary | null>(null)
+  const [journal, setJournal] = useState<Record<string, RunJournalRow[]>>({})
   const [error, setError] = useState<string | null>(null)
-  const runRef = useRef(0)
+  const [busy, setBusy] = useState(false)
+  const pollRef = useRef<number | null>(null)
+
+  const selected = projections.find(item => item.id === selectedId)
 
   const loadProjections = useCallback(async () => {
     const items = await getYouTubeShows(libraryId)
     setProjections(items)
-    setSelectedId(current => (items.some(item => item.id === current) ? current : items[0]?.id ?? ""))
+    setSelectedId(current => (items.some(item => item.id === current) ? current : items.find(item => item.enabled)?.id ?? items[0]?.id ?? ""))
   }, [libraryId])
+
+  const loadHistory = useCallback(async (projectionId: string) => {
+    const result = await getProjectionRuns(projectionId)
+    setHistory(result)
+    if (result.active_run) {
+      setRun(result.active_run)
+    }
+  }, [])
 
   useEffect(() => {
     void loadProjections().catch(err => setError(errorMessage(err, "Unable to load Jellyfin folders.")))
   }, [loadProjections])
 
-  const check = useCallback(async (projectionId: string, channelId: string) => {
-    if (!projectionId) {
+  useEffect(() => {
+    setPlan(null)
+    setActions(null)
+    setRun(null)
+    setHistory(null)
+    setJournal({})
+    if (selectedId) {
+      void loadHistory(selectedId).catch(() => undefined)
+    }
+  }, [selectedId, loadHistory])
+
+  // Poll an active run until it finishes.
+  useEffect(() => {
+    if (!run || !["queued", "running"].includes(run.status)) {
       return
     }
-
-    setChecking(true)
-    setError(null)
-
-    try {
-      setPlan(await getYouTubeShowsPlan(projectionId, channelId))
-    } catch (err) {
-      setError(errorMessage(err, "Unable to check the Jellyfin folder."))
-    } finally {
-      setChecking(false)
+    pollRef.current = window.setTimeout(async () => {
+      try {
+        const next = await getProjectionRun(run.id)
+        setRun(next)
+        if (!["queued", "running"].includes(next.status) && selectedId) {
+          void loadHistory(selectedId)
+        }
+      } catch {
+        // Try again on the next tick.
+      }
+    }, 2000)
+    return () => {
+      if (pollRef.current) window.clearTimeout(pollRef.current)
     }
-  }, [])
-
-  useEffect(() => {
-    runRef.current += 1
-    setSyncing(false)
-    setProgress(null)
-    setTotals(null)
-    setProblems([])
-    setPlan(null)
-    void check(selectedId, channel)
-  }, [selectedId, channel, check])
+  }, [run, selectedId, loadHistory])
 
   async function create(event: FormEvent) {
     event.preventDefault()
     setCreating(true)
     setCreateError(null)
-
     try {
-      const created = await createYouTubeShows(libraryId, destination.trim())
+      const created = await createYouTubeShows(libraryId, destination.trim(), acknowledge)
       await loadProjections()
       setSelectedId(created.id)
     } catch (err) {
@@ -146,73 +193,101 @@ export function YouTubeShowsPanel({
     }
   }
 
-  async function sync() {
-    if (!plan || !selectedId) {
+  async function update(values: Parameters<typeof updateProjection>[1]) {
+    if (!selected) return
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await updateProjection(selected.id, values)
+      setProjections(current => current.map(item => (item.id === updated.id ? updated : item)))
+      setPlan(null)
+    } catch (err) {
+      setError(errorMessage(err, "Unable to save the setting."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!selected || !window.confirm(`Delete the "${selected.name}" projection? Files already written stay on disk and become unmanaged.`)) {
       return
     }
-
-    const run = ++runRef.current
-    const sum = Object.fromEntries(
-      ["created", "updated", "relinked", "deleted", "artwork", "adopted", "kept", "conflict", "failed"].map(key => [key, 0]),
-    ) as Record<ShowsResult, number>
-    const found: ShowsProblem[] = []
-    let cursor: string | null = null
-    let done = 0
-
-    setSyncing(true)
-    setError(null)
-    setTotals(null)
-    setProblems([])
-    setProgress({ done: 0, total: plan.pending })
-
     try {
-      do {
-        const batch = await syncYouTubeShows(selectedId, { cursor, batch: BATCH_SIZE, channel: channel || null })
-
-        if (runRef.current !== run) {
-          return
-        }
-
-        for (const [key, value] of Object.entries(batch.counts)) {
-          sum[key as ShowsResult] += value
-          done += value
-        }
-        found.push(...batch.problems)
-        cursor = batch.next_cursor
-        setProgress({ done, total: done + batch.remaining })
-
-        if (batch.error) {
-          setError(batch.error)
-          break
-        }
-      } while (cursor)
-
-      setTotals({ ...sum })
-      setProblems(found)
-      setPlan(await getYouTubeShowsPlan(selectedId, channel))
+      await deleteProjection(selected.id)
+      await loadProjections()
     } catch (err) {
-      if (runRef.current === run) {
-        setTotals({ ...sum })
-        setProblems(found)
-        setError(errorMessage(err, "The sync stopped because of an error."))
-      }
-    } finally {
-      if (runRef.current === run) {
-        setSyncing(false)
-        setProgress(null)
-      }
+      setError(errorMessage(err, "Unable to delete the projection."))
     }
   }
 
-  function stop() {
-    runRef.current += 1
-    setSyncing(false)
-    setProgress(null)
-    void check(selectedId, channel)
+  async function build() {
+    if (!selected) return
+    setBuilding(true)
+    setError(null)
+    setRun(null)
+    try {
+      const result = await buildProjectionPlan(selected.id, channel || undefined)
+      setPlan(result)
+      setActions(result.actions)
+      setActionFilter("")
+    } catch (err) {
+      setError(errorMessage(err, "Unable to build a plan."))
+    } finally {
+      setBuilding(false)
+    }
   }
 
-  const selected = projections.find(item => item.id === selectedId)
-  const blocked = plan?.source_error || plan?.destination_error
+  async function loadActions(page: number, filter: string) {
+    if (!plan) return
+    try {
+      setActions(await getProjectionPlanActions(plan.id, page, filter))
+      setActionFilter(filter)
+    } catch (err) {
+      setError(errorMessage(err, "Unable to load the planned changes."))
+    }
+  }
+
+  async function apply() {
+    if (!plan) return
+    setBusy(true)
+    setError(null)
+    try {
+      setRun(await requestProjectionRun(plan.id, plan.digest, newOperationId()))
+      setPlan(null)
+      setActions(null)
+    } catch (err) {
+      setError(errorMessage(err, "Unable to start the run."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancel() {
+    if (!run) return
+    try {
+      setRun(await cancelProjectionRun(run.id))
+    } catch (err) {
+      setError(errorMessage(err, "Unable to cancel."))
+    }
+  }
+
+  async function toggleJournal(runId: string) {
+    if (journal[runId]) {
+      setJournal(current => {
+        const next = { ...current }
+        delete next[runId]
+        return next
+      })
+      return
+    }
+    const rows = await getProjectionRunJournal(runId)
+    setJournal(current => ({ ...current, [runId]: rows.results }))
+  }
+
+  const blocking = plan?.findings.filter(finding => finding.severity === "blocking") ?? []
+  const warnings = plan?.findings.filter(finding => finding.severity === "warning") ?? []
+  const active = run && ["queued", "running"].includes(run.status)
+  const needsAcknowledgement = selected && selected.link_mode === "hardlink" && !selected.hardlink_acknowledged
 
   return (
     <div className="space-y-6">
@@ -220,146 +295,149 @@ export function YouTubeShowsPanel({
         <CardHeader>
           <CardTitle>Jellyfin folder: channels as TV shows</CardTitle>
           <CardDescription>
-            Builds a separate folder in the layout Jellyfin expects: one show per channel with a tvshow.nfo, poster,
-            and fanart, a season per upload year, and each video renamed with its own episode NFO and thumbnail.
-            Videos are hardlinked, so they use no extra disk space and TubeArchivist&apos;s folder is never changed.
-            Ratings from the Ratings tab are written into every NFO.
+            A separate folder in the layout Jellyfin expects: one show per channel with tvshow.nfo, poster, and fanart, a
+            season per upload year, and each video renamed with its own NFO and thumbnail. Ratings from the Ratings tab are
+            written into every NFO. TubeArchivist&apos;s folder is never changed. Changes are planned for you to review, then
+            applied in the background by the scan worker.
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-4 text-sm">
+        <CardContent className="space-y-5 text-sm">
           {projections.length > 1 && (
             <label className="flex flex-wrap items-center gap-2">
               Folder
               <select className={SELECT_CLASS} value={selectedId} onChange={event => setSelectedId(event.target.value)}>
                 {projections.map(item => (
-                  <option key={item.id} value={item.id}>{item.destination_path}</option>
+                  <option key={item.id} value={item.id}>
+                    {item.destination_path}{item.enabled ? "" : " (turned off)"}
+                  </option>
                 ))}
               </select>
             </label>
           )}
 
           {!projections.length && (
-            <form className="space-y-2" onSubmit={create}>
-              <Label htmlFor="youtube-shows-destination">Destination folder</Label>
-              <div className="flex flex-wrap gap-2">
+            <form className="space-y-3" onSubmit={create}>
+              <div className="space-y-2">
+                <Label htmlFor="youtube-shows-destination">Destination folder</Label>
                 <Input
                   id="youtube-shows-destination"
-                  className="min-w-80 flex-1"
                   value={destination}
                   placeholder="\\server\share\YouTube Shows"
                   onChange={event => setDestination(event.target.value)}
                 />
-                <Button type="submit" disabled={creating || !destination.trim()}>
-                  {creating ? "Setting up..." : "Set up folder"}
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  On the same share and volume as this library, outside it, and inside a folder allowed by
+                  LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS. It&apos;s created if it doesn&apos;t exist.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Choose a folder on the same share and volume as this library, outside it (hardlinks can&apos;t cross
-                volumes). It&apos;s created if it doesn&apos;t exist. Nothing is written until you sync.
-              </p>
+              <label className="flex items-start gap-2">
+                <input type="checkbox" className="mt-0.5 size-4" checked={acknowledge} onChange={event => setAcknowledge(event.target.checked)} />
+                <span>
+                  Use hardlinks. A hardlink is the same file as the original under a second name, so it takes no extra
+                  space, and nothing should write into videos through the Jellyfin folder.
+                </span>
+              </label>
+              <Button type="submit" disabled={creating || !destination.trim()}>
+                {creating ? "Setting up..." : "Set up folder"}
+              </Button>
               {createError && <p className="text-destructive" role="alert">{createError}</p>}
             </form>
           )}
 
           {selected && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{selected.destination_path}</span>
-                <Badge variant="secondary">Hardlinks</Badge>
-                {plan?.last_run_at && (
+                <span className="font-medium break-all">{selected.destination_path}</span>
+                <Badge variant="secondary">{selected.link_mode_label}</Badge>
+                {!selected.enabled && <Badge variant="outline">Turned off</Badge>}
+                {history?.latest_run && (
                   <span className="text-xs text-muted-foreground">
-                    Last synced {new Date(plan.last_run_at).toLocaleString()}
+                    Last run {formatDateTime(history.latest_run.completed_at ?? history.latest_run.created_at)}
                   </span>
                 )}
+                {history && <span className="text-xs text-muted-foreground">{history.managed_files.toLocaleString()} managed files</span>}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2">
-                  Channels
+              {needsAcknowledgement && (
+                <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3" role="note">
+                  <p>
+                    This folder hardlinks videos: each one is the same file as the original under a second name, so it uses
+                    no extra space. Nothing should write into the videos through the Jellyfin folder (Jellyfin writes NFOs
+                    and images beside them, which is fine).
+                  </p>
+                  <Button size="sm" disabled={busy} onClick={() => void update({ hardlink_acknowledged: true })}>
+                    I understand, use hardlinks
+                  </Button>
+                </div>
+              )}
+
+              {!selected.enabled && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-3">
+                  <span>This projection is turned off (it was converted from the retired template engine).</span>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void update({ enabled: true })}>Turn on</Button>
+                  <Button size="sm" variant="ghost" onClick={() => void remove()}>Delete</Button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="space-y-1">
+                  <span className="block text-xs font-medium text-muted-foreground">When a video is deleted</span>
                   <select
                     className={SELECT_CLASS}
-                    value={channel}
-                    disabled={syncing}
-                    onChange={event => setChannel(event.target.value)}
+                    value={selected.stale_policy}
+                    disabled={busy}
+                    onChange={event => void update({ stale_policy: event.target.value as Projection["stale_policy"] })}
                   >
+                    <option value="remove_owned">Remove its files from this folder</option>
+                    <option value="keep">Keep them</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="block text-xs font-medium text-muted-foreground">Channels</span>
+                  <select className={SELECT_CLASS} value={channel} onChange={event => setChannel(event.target.value)}>
                     <option value="">All channels</option>
-                    {plan?.channels.map(item => (
+                    {(plan?.overview.channels ?? []).map(item => (
                       <option key={item.id} value={item.id}>{item.title}</option>
                     ))}
                   </select>
                 </label>
-                <Button variant="outline" disabled={checking || syncing} onClick={() => void check(selectedId, channel)}>
-                  {checking ? "Checking..." : "Check again"}
+                <Button disabled={building || Boolean(active)} onClick={() => void build()}>
+                  {building ? "Building plan..." : plan ? "Build a new plan" : "Check for changes"}
                 </Button>
               </div>
-              {!channel && !plan?.managed_files && (
-                <p className="text-xs text-muted-foreground">
-                  Tip: sync one channel first and check it in Jellyfin before syncing the rest.
-                </p>
-              )}
 
               {error && <p className="text-destructive" role="alert">{error}</p>}
 
-              {blocked && (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/8 p-3" role="alert">
-                  {plan?.source_error && <p>Library folder: {plan.source_error}</p>}
-                  {plan?.destination_error && <p>Destination: {plan.destination_error}</p>}
+              {active && run && (
+                <div className="space-y-2 rounded-lg border p-3" role="status">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {run.status === "queued" ? "Waiting for the scan worker..." : `Applying changes... ${run.done} of ${run.total}`}
+                    </span>
+                    <Button size="sm" variant="outline" disabled={run.cancel_requested} onClick={() => void cancel()}>
+                      {run.cancel_requested ? "Cancelling..." : "Cancel"}
+                    </Button>
+                  </div>
+                  <Progress value={run.total ? (run.done / run.total) * 100 : 0} />
+                  {run.status === "queued" && (
+                    <p className="text-xs text-muted-foreground">Runs are applied by the background worker (run_scan_worker). Make sure it&apos;s running.</p>
+                  )}
                 </div>
               )}
 
-              {plan && (
-                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                  {ACTION_ORDER.filter(action => action !== "artwork" || plan.artwork_available).map(action => (
-                    <div key={action} className="rounded-lg border bg-muted/30 px-3 py-2.5">
-                      <div className="text-xs text-muted-foreground">{ACTION_LABELS[action]}</div>
-                      <div className="mt-0.5 text-xl font-semibold tabular-nums">{plan.summary[action]}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {plan && !plan.artwork_available && (
-                <p className="text-xs text-muted-foreground">
-                  No artwork integration is assigned to this library, so shows get no poster or fanart. Add your
-                  TubeArchivist or YouTube connection with artwork on the library&apos;s Settings tab.
-                </p>
-              )}
-
-              {syncing ? (
-                <div className="flex flex-wrap items-center gap-2" role="status">
-                  <span>Syncing... {progress ? `${progress.done} of ${progress.total}` : ""}</span>
-                  <Button variant="outline" size="sm" onClick={stop}>Stop</Button>
-                </div>
-              ) : (
-                plan && !blocked && (
-                  <Button disabled={!plan.pending} onClick={() => void sync()}>
-                    {plan.pending
-                      ? `Sync ${plan.pending} change${plan.pending === 1 ? "" : "s"}${channel ? " for this channel" : ""}`
-                      : "Everything is in sync"}
-                  </Button>
-                )
-              )}
-
-              {totals && (
-                <div className="space-y-2" role="status">
-                  <p className="font-medium">
-                    {[
-                      totals.created && `${totals.created} added`,
-                      totals.updated && `${totals.updated} updated`,
-                      totals.relinked && `${totals.relinked} relinked`,
-                      totals.deleted && `${totals.deleted} removed`,
-                      totals.artwork && `artwork for ${totals.artwork} show${totals.artwork === 1 ? "" : "s"}`,
-                      totals.adopted && `${totals.adopted} already in place`,
-                    ].filter(Boolean).join(", ") || "Nothing changed"}.
-                    {totals.conflict > 0 && ` ${totals.conflict} left alone (see below).`}
-                    {totals.failed > 0 && ` ${totals.failed} failed.`}
-                  </p>
-                  {problems.length > 0 && (
+              {run && !active && (
+                <div className="space-y-2 rounded-lg border p-3" role="status">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={RUN_VARIANT[run.status] ?? "secondary"}>{run.status_label}</Badge>
+                    <span>{resultSummary(run.counts)}.</span>
+                  </div>
+                  {run.error && <p className="text-destructive">{run.error}</p>}
+                  {run.problems.length > 0 && (
                     <ul className="space-y-1">
-                      {problems.slice(0, 100).map(problem => (
+                      {run.problems.slice(0, 50).map(problem => (
                         <li key={`${problem.action}:${problem.path}`} className="text-xs">
-                          <span className="font-medium">{problem.path}</span>: {problem.message}
+                          <span className="font-medium break-all">{problem.path}</span>: {problem.message}
                         </li>
                       ))}
                     </ul>
@@ -367,46 +445,129 @@ export function YouTubeShowsPanel({
                 </div>
               )}
 
-              {plan && plan.channels.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="text-left text-xs text-muted-foreground">
-                      <tr>
-                        <th className="py-1 pr-3">Show</th>
-                        <th className="py-1 pr-3">Folder</th>
-                        <th className="py-1 pr-3">Rating</th>
-                        <th className="py-1 pr-3">Videos</th>
-                        <th className="py-1">Changes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plan.channels.map(item => (
-                        <tr key={item.id} className="border-t">
-                          <td className="py-1 pr-3 font-medium">{item.title}</td>
-                          <td className="py-1 pr-3 text-muted-foreground">{item.folder}</td>
-                          <td className="py-1 pr-3">
-                            {item.rating || <Badge variant="destructive">No rating</Badge>}
-                          </td>
-                          <td className="py-1 pr-3">{item.videos}</td>
-                          <td className="py-1">{item.pending || "—"}</td>
-                        </tr>
+              {plan && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={plan.status === "ready" ? "default" : plan.status === "blocked" ? "destructive" : "secondary"}>
+                      Plan {plan.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Built {formatDateTime(plan.created_at)} · expires {formatDateTime(plan.expires_at)}
+                    </span>
+                  </div>
+
+                  {blocking.map(finding => (
+                    <p key={finding.code} className="rounded-lg border border-destructive/40 bg-destructive/8 p-3" role="alert">{finding.message}</p>
+                  ))}
+                  {warnings.map(finding => (
+                    <p key={finding.code} className="rounded-lg border border-warning/40 bg-warning/10 p-3" role="note">{finding.message}</p>
+                  ))}
+
+                  {plan.status !== "blocked" && (
+                    <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                      {ACTION_ORDER.filter(action => action !== "artwork" || plan.overview.artwork_available).map(action => (
+                        <button
+                          key={action}
+                          type="button"
+                          onClick={() => void loadActions(1, actionFilter === action ? "" : action)}
+                          className={`rounded-lg border bg-muted/30 px-3 py-2.5 text-left ${actionFilter === action ? "ring-2 ring-ring" : ""}`}
+                          aria-pressed={actionFilter === action}
+                        >
+                          <div className="text-xs font-medium text-muted-foreground">{ACTION_LABELS[action]}</div>
+                          <div className="mt-0.5 text-xl font-semibold tabular-nums">{plan.counts[action] ?? 0}</div>
+                        </button>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  )}
+
+                  {plan.status === "ready" && (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button disabled={busy || !plan.changes} onClick={() => void apply()}>
+                        {plan.changes ? `Apply reviewed plan (${plan.changes} change${plan.changes === 1 ? "" : "s"})` : "Everything is in sync"}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Only these changes are made; each file is rechecked first. Owned files that changed outside LibraryForge are left alone.
+                      </span>
+                    </div>
+                  )}
+
+                  {(plan.overview.channels?.length ?? 0) > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="text-left text-xs text-muted-foreground">
+                          <tr>
+                            <th className="py-1 pr-3">Show</th>
+                            <th className="py-1 pr-3">Folder</th>
+                            <th className="py-1 pr-3">Rating</th>
+                            <th className="py-1 pr-3">Videos</th>
+                            <th className="py-1">Changes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.overview.channels?.map(item => (
+                            <tr key={item.id} className="border-t">
+                              <td className="py-1 pr-3 font-medium">{item.title}</td>
+                              <td className="py-1 pr-3 text-muted-foreground">{item.folder}</td>
+                              <td className="py-1 pr-3">{item.rating || <Badge variant="destructive">No rating</Badge>}</td>
+                              <td className="py-1 pr-3">{item.videos}</td>
+                              <td className="py-1">{item.pending || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {actions && actions.total > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Planned changes{actionFilter ? `: ${ACTION_LABELS[actionFilter as PlanActionKind]}` : ""} ({actions.total})
+                      </div>
+                      <ul className="space-y-1">
+                        {actions.results.map(row => (
+                          <li key={row.ordinal} className="text-xs">
+                            <Badge variant="secondary">{ACTION_LABELS[row.action]}</Badge>{" "}
+                            <span className="text-muted-foreground">{KIND_LABELS[row.kind] ?? row.kind}</span>{" "}
+                            <span className="break-all">{row.path}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" disabled={actions.page <= 1} onClick={() => void loadActions(actions.page - 1, actionFilter)}>Previous</Button>
+                        <span className="text-xs text-muted-foreground">Page {actions.page} of {Math.max(1, Math.ceil(actions.total / actions.page_size))}</span>
+                        <Button size="sm" variant="outline" disabled={!actions.next_page} onClick={() => void loadActions(actions.page + 1, actionFilter)}>Next</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {plan && !totals && plan.actions.length > 0 && (
-                <details>
-                  <summary className="cursor-pointer text-muted-foreground">
-                    Show {plan.actions_truncated ? `the first ${plan.actions.length}` : "all"} planned changes
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {plan.actions.map(action => (
-                      <li key={`${action.action}:${action.path}`} className="text-xs">
-                        <Badge variant="secondary">{ACTION_LABELS[action.action]}</Badge>{" "}
-                        <span className="text-muted-foreground">{KIND_LABELS[action.kind] ?? action.kind}</span>{" "}
-                        {action.path}
+              {history && history.results.length > 0 && (
+                <details className="rounded-lg border p-3">
+                  <summary className="cursor-pointer font-medium">Run history ({history.results.length})</summary>
+                  <ul className="mt-3 space-y-2">
+                    {history.results.map(item => (
+                      <li key={item.id} className="space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={RUN_VARIANT[item.status] ?? "secondary"}>{item.status_label}</Badge>
+                          <span className="text-xs text-muted-foreground">{formatDateTime(item.completed_at ?? item.created_at)}</span>
+                          <span className="text-xs">{resultSummary(item.counts)}</span>
+                          {(item.problems.length > 0 || item.error) && (
+                            <Button size="xs" variant="ghost" onClick={() => void toggleJournal(item.id)}>
+                              {journal[item.id] ? "Hide details" : "Details"}
+                            </Button>
+                          )}
+                        </div>
+                        {item.error && <p className="text-xs text-destructive">{item.error}</p>}
+                        {journal[item.id] && (
+                          <ul className="space-y-1 pl-2">
+                            {journal[item.id].map(row => (
+                              <li key={row.ordinal} className="text-xs">
+                                <span className="font-medium break-all">{row.path}</span>: {row.message || row.result}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -417,10 +578,7 @@ export function YouTubeShowsPanel({
                 <p className="font-medium">In Jellyfin</p>
                 <ol className="list-decimal space-y-1 pl-4">
                   <li>Add {selected.destination_path} as a <span className="font-medium">Shows</span> library.</li>
-                  <li>
-                    In its metadata settings keep the <span className="font-medium">Nfo</span> reader on and turn off
-                    the TubeArchivist plugin and other online metadata downloaders, so the NFOs (and their ratings) are used.
-                  </li>
+                  <li>Keep the <span className="font-medium">Nfo</span> reader on and turn off the TubeArchivist plugin and online downloaders for it.</li>
                   <li>Give your child&apos;s account access to this library, not the TubeArchivist one.</li>
                 </ol>
               </div>

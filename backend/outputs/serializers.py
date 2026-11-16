@@ -73,6 +73,10 @@ class ProjectionSerializer(
             "name",
             "destination_path",
             "layout",
+            "stale_policy",
+            "hardlink_acknowledged",
+            "enabled",
+            "needs_preview",
             "link_mode",
             "link_mode_label",
             "naming_template",
@@ -84,6 +88,7 @@ class ProjectionSerializer(
 
         read_only_fields = [
             "id",
+            "needs_preview",
             "last_run_at",
             "created_at",
             "updated_at",

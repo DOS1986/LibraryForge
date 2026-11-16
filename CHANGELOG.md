@@ -5,6 +5,31 @@ All notable changes to LibraryForge will be documented in this file.
 LibraryForge uses Semantic Versioning while the application is under active
 pre-1.0 development.
 
+## [0.1.0-alpha.6] - Unreleased
+
+### Added
+
+* Added a projection engine with stored plans and background runs. Checking a projection builds a plan you review: every change, findings, counts, and a 30-minute expiry. Applying it queues a run of exactly that plan in the background worker, with progress, cancellation, and a per-file journal that records each change before the disk is touched.
+* Added run history per projection, with results, problems, and journal details.
+* Added copy and symlink media policies for projections, alongside hardlinks.
+
+### Changed
+
+* The Channels as TV shows folder now uses the projection engine:
+  * Hardlinks need a one-time acknowledgement and are refused for Read Only libraries.
+  * Files of deleted videos are removed only after a finished scan with the library reachable, and a "keep them" policy is available.
+  * After an interrupted run, files are adopted only where the run journal shows they were being created.
+  * Files from alpha.5 are verified against disk once, on the first plan.
+* Projection destinations now require `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` (development included) and must be separate from every library. Libraries can't be created over a projection's folder.
+
+### Removed
+
+* Removed the template projection engine and its preview and run endpoints, plus the batch `shows-plan` and `shows-sync` endpoints. Existing template projections were converted, turned off, and marked to be previewed.
+
+### Database
+
+* Added migrations `outputs.0003_projection_plans_and_runs` and `outputs.0004_projection_plan_overview`. They add projection plans, plan actions, runs, and the run journal; stale policy, hardlink acknowledgement, enabled, and preview flags on projections; and ownership and last run on managed files. Existing managed files are marked for verification and template projections are converted. Additive only.
+
 ## [0.1.0-alpha.5] - 2026-11-15
 
 ### Added

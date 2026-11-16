@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from rest_framework import serializers
 
 from libraries.security import (
@@ -6,8 +8,9 @@ from libraries.security import (
 )
 from libraries.services.storage import (
     StorageAccessError,
-    validate_storage_path as
-    validate_server_storage_path,
+)
+from libraries.services.storage import (
+    validate_storage_path as validate_server_storage_path,
 )
 
 from .models import Library
@@ -122,6 +125,17 @@ class LibrarySerializer(
                 path=path,
                 user=request.user,
             )
+
+            # A projection's output folder can't become a library: scanning
+            # generated output would duplicate the catalog it came from.
+            from outputs.security import overlapping_projection
+
+            projection = overlapping_projection(Path(path))
+            if projection is not None:
+                raise LibraryPathPolicyError(
+                    f'This folder overlaps the output of the "{projection.name}" projection. '
+                    "Projection output can't be a library."
+                )
 
         except (
             StorageAccessError,

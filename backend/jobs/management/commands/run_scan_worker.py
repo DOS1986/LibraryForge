@@ -26,6 +26,7 @@ from jobs.models import ScanJob
 from jobs.services import (
     HEARTBEAT_SECONDS,
     heartbeat,
+    live_worker_ids,
     mark_cancelled,
     new_worker_id,
     prune_dead_workers,
@@ -34,6 +35,11 @@ from jobs.services import (
     unregister_worker,
 )
 from media.services.scanner import ScanCancelled, process_scan_job
+from outputs.services.engine import (
+    claim_next_run,
+    execute_run,
+    recover_interrupted_runs,
+)
 
 MAX_WORKERS = 8
 RESPAWN_DELAY_SECONDS = 5
@@ -196,6 +202,27 @@ class Command(BaseCommand):
     # Worker
     # ------------------------------------------------------------------
 
+    def _run_projection(self, worker_id: str, beat) -> bool:
+        """Run one queued projection plan; False if there was none."""
+
+        run = claim_next_run(worker_id)
+        if run is None:
+            return False
+        self.stdout.write(f"Applying projection plan for {run.projection_name}")
+        heartbeat(worker_id, None)
+        try:
+            execute_run(run)
+        except Exception as exc:  # noqa: BLE001 - recorded on the run, so the worker keeps going
+            run.refresh_from_db()
+            run.status = run.Status.FAILED
+            run.error = str(exc)[:2000]
+            run.completed_at = timezone.now()
+            run.save()
+            self.stderr.write(self.style.ERROR(str(exc)))
+        finally:
+            heartbeat(worker_id, None)
+        return True
+
     def _run_worker(self, stop_event: threading.Event | None) -> None:
         worker_id = new_worker_id()
         register_worker(worker_id)
@@ -205,6 +232,12 @@ class Command(BaseCommand):
         if recovered:
             self.stdout.write(
                 f"Marked {recovered} interrupted scan{'s' if recovered != 1 else ''} as failed."
+            )
+
+        interrupted = recover_interrupted_runs(live_worker_ids())
+        if interrupted:
+            self.stdout.write(
+                f"Marked {interrupted} interrupted projection run{'s' if interrupted != 1 else ''}."
             )
 
         beat = _Heartbeat(worker_id)
@@ -258,6 +291,9 @@ class Command(BaseCommand):
                         job_id = job.id
 
                 if job_id is None:
+                    # No scan waiting: apply a reviewed projection plan, if any.
+                    if self._run_projection(worker_id, beat):
+                        continue
                     time.sleep(1)
                     continue
 

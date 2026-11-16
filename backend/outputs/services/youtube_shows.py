@@ -42,6 +42,7 @@ import errno
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import uuid
 import xml.etree.ElementTree as ET
@@ -49,9 +50,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
-
-from django.db import DatabaseError, transaction
-from django.utils import timezone
 
 from catalog.artwork_views import _attached_picture_stream, _ffmpeg_executable
 from catalog.models import ArtworkFile, Channel
@@ -423,57 +421,8 @@ def destination_error(projection) -> str | None:
     return None
 
 
-def shows_plan(projection, *, channel: str | None = None) -> dict[str, Any]:
-    _require_layout(projection)
-    plan = _plan(projection)
-    actions = _filtered(plan["actions"], channel)
-    summary = dict.fromkeys(ACTIONS, 0)
-    for action in actions:
-        summary[action.action] += 1
-
-    files = dict.fromkeys(Kind.values, 0)
-    for item in plan["desired"]:
-        files[item.kind] += 1
-    pending_by_channel: dict[str, int] = defaultdict(int)
-    videos_by_channel: dict[str, int] = defaultdict(int)
-    for action in plan["actions"]:
-        if action.channel:
-            pending_by_channel[str(action.channel.id)] += 1
-    for item in plan["desired"]:
-        if item.kind == Kind.VIDEO:
-            videos_by_channel[str(item.channel.id)] += 1
-
-    library = projection.library
-    return {
-        "projection_id": str(projection.id),
-        "destination_path": projection.destination_path,
-        "channel": channel or None,
-        "source_error": secure_nfo.library_root_error(library),
-        "destination_error": destination_error(projection),
-        "artwork_available": plan["has_artwork"],
-        "summary": summary,
-        "pending": len(actions),
-        "files": files,
-        "managed_files": ProjectionFile.objects.filter(projection=projection).count(),
-        "channels": [
-            {
-                "id": str(value.id),
-                "title": value.title,
-                "folder": plan["names"][value.id],
-                "rating": value.content_rating,
-                "videos": videos_by_channel[str(value.id)],
-                "pending": pending_by_channel[str(value.id)],
-            }
-            for value in plan["channels"]
-        ],
-        "actions": [action.summary() for action in actions[:SAMPLE_LIMIT]],
-        "actions_truncated": len(actions) > SAMPLE_LIMIT,
-        "last_run_at": projection.last_run_at.isoformat() if projection.last_run_at else None,
-    }
-
-
 # ---------------------------------------------------------------------------
-# Applying (one batch at a time)
+# Applying one planned action (the engine journals and sequences them)
 # ---------------------------------------------------------------------------
 
 
@@ -573,6 +522,43 @@ def _link(source: Path, destination: Path) -> None:
         raise
 
 
+def _place(projection, source: Path, destination: Path) -> None:
+    """Put the media at ``destination`` by the projection's media policy."""
+
+    mode = projection.link_mode
+    if mode == Projection.LinkMode.HARDLINK:
+        _link(source, destination)
+    elif mode == Projection.LinkMode.SYMLINK:
+        os.symlink(source, destination)
+    else:
+        # A copy is written beside the destination, size-checked, then renamed into place.
+        temporary = destination.with_name(f".libraryforge-{uuid.uuid4().hex}.tmp")
+        try:
+            shutil.copyfile(source, temporary)
+            if temporary.stat().st_size != source.stat().st_size:
+                raise OSError("The copied file's size doesn't match the source.")
+            os.replace(temporary, destination)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+
+def _matches_source(projection, source: Path, destination: Path) -> bool:
+    """Whether ``destination`` already is this source under the media policy."""
+
+    if projection.link_mode == Projection.LinkMode.HARDLINK:
+        return _same_file(source, destination)
+    if projection.link_mode == Projection.LinkMode.SYMLINK:
+        try:
+            return destination.is_symlink() and Path(os.readlink(destination)) == source
+        except OSError:
+            return False
+    try:
+        return destination.stat().st_size == source.stat().st_size
+    except OSError:
+        return False
+
+
 def _thumbnail(source: Path, media_file: MediaFile, stream_index: int) -> bytes:
     if _attached_picture_stream(media_file, stream_index) is None:
         raise _Conflict("The video has no embedded thumbnail.")
@@ -606,16 +592,19 @@ def _record(projection, path: str, desired: Desired, *, size: int | None, sha: s
     )
 
 
-def _create(projection, root: Path, library_root: Path, desired: Desired) -> str:
+def _create(projection, root: Path, library_root: Path, desired: Desired, *, allow_adopt: bool = False) -> str:
+    """Create one file. An existing file is only adopted when the run journal
+    shows an earlier run of this projection was creating it (``allow_adopt``)."""
+
     path = _target(root, desired.path, create_parents=True)
     if desired.kind == Kind.VIDEO:
         source = _source(library_root, desired.media_file)
         if path.exists():
-            if not _same_file(source, path):
+            if not allow_adopt or not _matches_source(projection, source, path):
                 raise _Conflict("A file LibraryForge didn't create is already at this path.")
             _record(projection, desired.path, desired, size=source.stat().st_size)
             return "adopted"
-        _link(source, path)
+        _place(projection, source, path)
         _record(projection, desired.path, desired, size=source.stat().st_size)
         return "created"
 
@@ -624,8 +613,8 @@ def _create(projection, root: Path, library_root: Path, desired: Desired) -> str
     else:
         data = desired.content or b""
     if path.exists():
-        # Left by an interrupted sync: adopt it only if it's exactly what we'd write.
-        if _file_sha(path) != _sha(data):
+        # Left by an interrupted run: adopt it only if it's exactly what we'd write.
+        if not allow_adopt or _file_sha(path) != _sha(data):
             raise _Conflict("A file LibraryForge didn't create is already at this path.")
         _record(projection, desired.path, desired, size=len(data), sha=_sha(data))
         return "adopted"
@@ -736,9 +725,9 @@ def _artwork(projection, root: Path, action: Action) -> str:
     return "artwork"
 
 
-def _apply(projection, root: Path, library_root: Path, action: Action) -> str:
+def _apply(projection, root: Path, library_root: Path, action: Action, *, allow_adopt: bool = False) -> str:
     if action.action == ACTION_CREATE:
-        return _create(projection, root, library_root, action.desired)
+        return _create(projection, root, library_root, action.desired, allow_adopt=allow_adopt)
     if action.action == ACTION_ARTWORK:
         return _artwork(projection, root, action)
     if action.action == ACTION_DELETE:
@@ -751,13 +740,13 @@ def _apply(projection, root: Path, library_root: Path, action: Action) -> str:
     if action.action == ACTION_RELINK:
         source = _source(library_root, action.desired.media_file)
         if path.exists():
-            if _same_file(source, path):
+            if _matches_source(projection, source, path):
                 _record(projection, action.path, action.desired, size=source.stat().st_size)
                 return "relinked"
             if not _is_ours(path, row):
                 raise _Conflict("The linked video changed outside LibraryForge, so it was left alone.")
             path.unlink()
-        _link(source, path)
+        _place(projection, source, path)
         _record(projection, action.path, action.desired, size=source.stat().st_size)
         return "relinked"
 
@@ -772,91 +761,5 @@ def _apply(projection, root: Path, library_root: Path, action: Action) -> str:
             return "updated"
         path.unlink()
     row.delete()
-    result = _create(projection, root, library_root, action.desired)
+    result = _create(projection, root, library_root, action.desired, allow_adopt=allow_adopt)
     return "updated" if result == "created" else result
-
-
-def shows_sync(projection, *, cursor: str | None = None, batch: Any = None, channel: str | None = None) -> dict[str, Any]:
-    """Apply one batch of the plan, in a stable order, starting after ``cursor``."""
-
-    _require_layout(projection)
-    library = projection.library
-    if library.management_mode == library.ManagementMode.READ_ONLY:
-        # Source files are only read, but a read-only library is a clear
-        # signal not to build anything from it without changing that first.
-        raise MatchRequestError(
-            "This library is Read Only. Change its management mode to Sidecar Only to build a Jellyfin folder from it.",
-            status=409,
-        )
-    try:
-        size = int(batch) if batch not in (None, "") else DEFAULT_BATCH
-    except (TypeError, ValueError) as exc:
-        raise MatchRequestError("Batch must be a whole number.") from exc
-    if not 1 <= size <= MAX_BATCH:
-        raise MatchRequestError(f"Batch must be between 1 and {MAX_BATCH}.")
-    for problem in (secure_nfo.library_root_error(library), destination_error(projection)):
-        if problem:
-            raise MatchRequestError(problem, status=409)
-
-    try:
-        with transaction.atomic():
-            # One sync per destination at a time.
-            Projection.objects.select_for_update(nowait=True).get(pk=projection.pk)
-            return _sync_batch(projection, cursor=cursor, size=size, channel=channel)
-    except DatabaseError as exc:
-        if "lock" in str(exc).casefold() or "could not obtain" in str(exc).casefold():
-            raise MatchRequestError("A sync for this folder is already running.", status=409) from exc
-        raise
-
-
-def _sync_batch(projection, *, cursor: str | None, size: int, channel: str | None) -> dict[str, Any]:
-    library_root = Path(projection.library.path).expanduser().resolve(strict=True)
-    try:
-        root = _destination_root(projection)
-    except OSError as exc:
-        raise MatchRequestError(secure_nfo.library_root_problem(exc), status=409) from exc
-
-    pending = _filtered(_plan(projection)["actions"], channel)
-    if cursor:
-        pending = [action for action in pending if action.sort_key > cursor]
-    selected = pending[:size]
-
-    counts = dict.fromkeys(RESULTS, 0)
-    problems: list[dict[str, Any]] = []
-    error = None
-    done = 0
-    for action in selected:
-        try:
-            with transaction.atomic():
-                result = _apply(projection, root, library_root, action)
-        except _CrossDevice:
-            # Every link would fail the same way. Stop, keeping what this batch recorded.
-            error = (
-                "Hardlinks can't be made here: the Jellyfin folder has to be on the same share and volume as the "
-                "library. Choose a destination next to the library folder."
-            )
-            break
-        except _Conflict as exc:
-            result = "conflict"
-            problems.append({**action.summary(), "result": result, "message": str(exc)})
-        except OSError as exc:
-            result = "failed"
-            problems.append({**action.summary(), "result": result, "message": exc.strerror or str(exc)})
-        counts[result] += 1
-        done += 1
-        if result == "kept":
-            problems.append(
-                {**action.summary(), "result": result, "message": "Changed outside LibraryForge, so it was left in place."}
-            )
-
-    remaining = len(pending) - done
-    projection.last_run_at = timezone.now()
-    projection.save(update_fields=["last_run_at", "updated_at"])
-    return {
-        "projection_id": str(projection.id),
-        "counts": counts,
-        "problems": problems,
-        "error": error,
-        "next_cursor": selected[done - 1].sort_key if done and remaining > 0 and error is None else None,
-        "remaining": remaining,
-    }

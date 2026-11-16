@@ -1,937 +1,112 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type FormEvent,
-} from "react"
-
-import {
-  Badge,
-} from "@/components/ui/badge"
-
-import {
-  Button,
-} from "@/components/ui/button"
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-
-import {
-  Input,
-} from "@/components/ui/input"
-
-import {
-  Label,
-} from "@/components/ui/label"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
 
 import { YouTubeShowsPanel } from "@/components/projections/YouTubeShowsPanel"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
-import {
-  createOutputProfile,
-  createProjection,
-  getOutputProfiles,
-  getProjections,
-  previewProjection,
-  runProjection,
-} from "@/lib/api"
+import { createOutputProfile, getOutputProfiles } from "@/lib/api"
+import { useLibraryOutlet } from "@/lib/route-context"
 
-import {
-  useLibraryOutlet,
-} from "@/lib/route-context"
-
-import type {
-  OutputProfile,
-  Projection,
-  ProjectionPreview,
-  ProjectionRunResult,
-} from "@/types"
+import type { OutputProfile } from "@/types"
 
 
-type OutputTarget =
-  | "jellyfin"
-  | "emby"
-  | "kodi"
-  | "generic"
+type OutputTarget = OutputProfile["target"]
 
-type LinkMode =
-  | "symlink"
-  | "hardlink"
-  | "copy"
+const TARGETS: { value: OutputTarget; label: string }[] = [
+  { value: "jellyfin", label: "Jellyfin" },
+  { value: "emby", label: "Emby" },
+  { value: "kodi", label: "Kodi" },
+  { value: "generic", label: "Generic" },
+]
+
+const SELECT_CLASS = "h-9 w-full rounded-lg border bg-card px-2 text-sm shadow-xs"
 
 
 export function LibraryProjectionsPage() {
-  const {
-    library,
-  } = useLibraryOutlet()
+  const { library } = useLibraryOutlet()
+  const [profiles, setProfiles] = useState<OutputProfile[]>([])
+  const [name, setName] = useState("")
+  const [target, setTarget] = useState<OutputTarget>("jellyfin")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const [
-    profiles,
-    setProfiles,
-  ] = useState<
-    OutputProfile[]
-  >([])
+  const load = useCallback(async () => {
+    setProfiles(await getOutputProfiles())
+  }, [])
 
-  const [
-    projections,
-    setProjections,
-  ] = useState<
-    Projection[]
-  >([])
+  useEffect(() => {
+    void load().catch(err => setError(err instanceof Error ? err.message : "Unable to load output profiles."))
+  }, [load])
 
-  const [
-    profileName,
-    setProfileName,
-  ] = useState(
-    "Jellyfin"
-  )
-
-  const [
-    profileTarget,
-    setProfileTarget,
-  ] = useState<
-    OutputTarget
-  >(
-    "jellyfin"
-  )
-
-  const [
-    projectionName,
-    setProjectionName,
-  ] = useState("")
-
-  const [
-    destinationPath,
-    setDestinationPath,
-  ] = useState("")
-
-  const [
-    linkMode,
-    setLinkMode,
-  ] = useState<
-    LinkMode
-  >(
-    "symlink"
-  )
-
-  const [
-    namingTemplate,
-    setNamingTemplate,
-  ] = useState(
-    "{channel}/{date} - {title} [{youtube_id}]"
-  )
-
-  const [
-    outputProfileId,
-    setOutputProfileId,
-  ] = useState("")
-
-  const [
-    preview,
-    setPreview,
-  ] = useState<
-    ProjectionPreview
-    | null
-  >(null)
-
-  const [
-    runResult,
-    setRunResult,
-  ] = useState<
-    ProjectionRunResult
-    | null
-  >(null)
-
-  const [
-    error,
-    setError,
-  ] = useState<
-    string | null
-  >(null)
-
-
-  const load =
-    useCallback(
-      async () => {
-        const [
-          profileResult,
-          projectionResult,
-        ] = await Promise.all([
-          getOutputProfiles(),
-
-          getProjections(
-            library.id
-          ),
-        ])
-
-        setProfiles(
-          profileResult
-        )
-
-        // Channels as TV shows folders have their own panel above.
-        setProjections(
-          projectionResult.filter(
-            item => item.layout !== "youtube_shows"
-          )
-        )
-
-        setOutputProfileId(
-          (
-            current
-          ) =>
-            current
-            || profileResult[
-              0
-            ]?.id
-            || ""
-        )
-      },
-      [
-        library.id,
-      ],
-    )
-
-
-  useEffect(
-    () => {
-      void load()
-    },
-    [
-      load,
-    ],
-  )
-
-
-  async function addProfile(
-    event: FormEvent,
-  ) {
+  async function addProfile(event: FormEvent) {
     event.preventDefault()
-
+    setSaving(true)
     setError(null)
-
     try {
-      await createOutputProfile({
-        name:
-          profileName,
-
-        target:
-          profileTarget,
-
-        nfo_root_element:
-          "movie",
-      })
-
+      await createOutputProfile({ name: name.trim(), target, nfo_root_element: "movie" })
+      setName("")
       await load()
-
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to create output profile."
-      )
+      setError(err instanceof Error ? err.message : "Unable to create the output profile.")
+    } finally {
+      setSaving(false)
     }
   }
 
-
-  async function addProjection(
-    event: FormEvent,
-  ) {
-    event.preventDefault()
-
-    if (!outputProfileId) {
-      return
-    }
-
-    setError(null)
-
-    try {
-      await createProjection({
-        library:
-          library.id,
-
-        output_profile:
-          outputProfileId,
-
-        name:
-          projectionName,
-
-        destination_path:
-          destinationPath,
-
-        link_mode:
-          linkMode,
-
-        naming_template:
-          namingTemplate,
-
-        generate_nfo:
-          true,
-      })
-
-      setProjectionName("")
-      setDestinationPath("")
-
-      await load()
-
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to create projection."
-      )
-    }
-  }
-
+  const online = library.content_type === "online_video" || library.content_type === "mixed"
 
   return (
-    <div
-      className="
-        space-y-6
-      "
-    >
-      {(library.content_type === "online_video" || library.content_type === "mixed") && (
-        <YouTubeShowsPanel libraryId={library.id} libraryPath={library.path} />
-      )}
+    <div className="space-y-6">
+      {online && <YouTubeShowsPanel libraryId={library.id} libraryPath={library.path} />}
 
-      {error && (
-        <div
-          className="
-            rounded-md
-            border
-            border-destructive/50
-            bg-destructive/5
-            p-4
-            text-sm
-            text-destructive
-          "
-        >
-          {error}
-        </div>
+      {!online && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Movie and TV projections</CardTitle>
+            <CardDescription>
+              Organized Jellyfin, Emby, Kodi, and generic folders for movie and TV libraries come with the next alpha.6
+              update. They&apos;ll use the same reviewed plans, background runs, and history as the YouTube Shows folder.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            Output Profiles
-          </CardTitle>
-
-          <CardDescription>
-            Define the target media player format for generated NFO files and projections.
-          </CardDescription>
+          <CardTitle>Output profiles</CardTitle>
+          <CardDescription>The media server each projection writes for: its naming, NFO, and artwork conventions.</CardDescription>
         </CardHeader>
-
-        <CardContent
-          className="
-            space-y-4
-          "
-        >
-          <div
-            className="
-              flex
-              flex-wrap
-              gap-2
-            "
-          >
-            {
-              profiles.map(
-                (
-                  profile
-                ) => (
-                  <Badge
-                    key={
-                      profile.id
-                    }
-                    variant="secondary"
-                  >
-                    {
-                      profile.name
-                    }
-                    {" — "}
-                    {
-                      profile.target_label
-                    }
-                  </Badge>
-                )
-              )
-            }
-          </div>
-
-          <form
-            onSubmit={
-              addProfile
-            }
-            className="
-              grid
-              gap-3
-              md:grid-cols-[1fr_180px_auto]
-            "
-          >
-            <Input
-              value={
-                profileName
-              }
-              onChange={
-                (
-                  event
-                ) =>
-                  setProfileName(
-                    event
-                      .target
-                      .value
-                  )
-              }
-              placeholder="Profile name"
-              required
-            />
-
-            <select
-              value={
-                profileTarget
-              }
-              onChange={
-                (
-                  event
-                ) =>
-                  setProfileTarget(
-                    (
-                      event
-                        .target
-                        .value
-                    ) as OutputTarget
-                  )
-              }
-              className="
-                h-9
-                rounded-md
-                border
-                bg-background
-                px-3
-                text-sm
-              "
-            >
-              <option
-                value="jellyfin"
-              >
-                Jellyfin
-              </option>
-
-              <option
-                value="emby"
-              >
-                Emby
-              </option>
-
-              <option
-                value="kodi"
-              >
-                Kodi
-              </option>
-
-              <option
-                value="generic"
-              >
-                Generic
-              </option>
-            </select>
-
-            <Button
-              type="submit"
-            >
-              Add Profile
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Create Projection
-          </CardTitle>
-
-          <CardDescription>
-            Build a separate media-player-facing library using symlinks, hardlinks, or copies.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          <form
-            onSubmit={
-              addProjection
-            }
-            className="
-              space-y-4
-            "
-          >
-            <div
-              className="
-                grid
-                gap-4
-                md:grid-cols-2
-              "
-            >
-              <div
-                className="
-                  space-y-2
-                "
-              >
-                <Label>
-                  Name
-                </Label>
-
-                <Input
-                  value={
-                    projectionName
-                  }
-                  onChange={
-                    (
-                      event
-                    ) =>
-                      setProjectionName(
-                        event
-                          .target
-                          .value
-                      )
-                  }
-                  placeholder="TubeArchivist → Jellyfin"
-                  required
-                />
-              </div>
-
-              <div
-                className="
-                  space-y-2
-                "
-              >
-                <Label>
-                  Output Profile
-                </Label>
-
-                <select
-                  value={
-                    outputProfileId
-                  }
-                  onChange={
-                    (
-                      event
-                    ) =>
-                      setOutputProfileId(
-                        event
-                          .target
-                          .value
-                      )
-                  }
-                  className="
-                    h-9
-                    w-full
-                    rounded-md
-                    border
-                    bg-background
-                    px-3
-                    text-sm
-                  "
-                  required
-                >
-                  <option
-                    value=""
-                  >
-                    Select profile
-                  </option>
-
-                  {
-                    profiles.map(
-                      (
-                        profile
-                      ) => (
-                        <option
-                          key={
-                            profile.id
-                          }
-                          value={
-                            profile.id
-                          }
-                        >
-                          {
-                            profile.name
-                          }
-                        </option>
-                      )
-                    )
-                  }
-                </select>
-              </div>
-
-              <div
-                className="
-                  space-y-2
-                "
-              >
-                <Label>
-                  Destination
-                </Label>
-
-                <Input
-                  value={
-                    destinationPath
-                  }
-                  onChange={
-                    (
-                      event
-                    ) =>
-                      setDestinationPath(
-                        event
-                          .target
-                          .value
-                      )
-                  }
-                  placeholder={
-                    String.raw`\\server\media\YouTube-Jellyfin`
-                  }
-                  required
-                />
-              </div>
-
-              <div
-                className="
-                  space-y-2
-                "
-              >
-                <Label>
-                  File Strategy
-                </Label>
-
-                <select
-                  value={
-                    linkMode
-                  }
-                  onChange={
-                    (
-                      event
-                    ) =>
-                      setLinkMode(
-                        (
-                          event
-                            .target
-                            .value
-                        ) as LinkMode
-                      )
-                  }
-                  className="
-                    h-9
-                    w-full
-                    rounded-md
-                    border
-                    bg-background
-                    px-3
-                    text-sm
-                  "
-                >
-                  <option
-                    value="symlink"
-                  >
-                    Symbolic Link
-                  </option>
-
-                  <option
-                    value="hardlink"
-                  >
-                    Hardlink
-                  </option>
-
-                  <option
-                    value="copy"
-                  >
-                    Copy
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div
-              className="
-                space-y-2
-              "
-            >
-              <Label>
-                Naming Template
-              </Label>
-
-              <Input
-                value={
-                  namingTemplate
-                }
-                onChange={
-                  (
-                    event
-                  ) =>
-                    setNamingTemplate(
-                      event
-                        .target
-                        .value
-                    )
-                }
-              />
-            </div>
-
-            <Button
-              type="submit"
-            >
-              Create Projection
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Projections
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent
-          className="
-            space-y-3
-          "
-        >
-          {
-            projections.map(
-              (
-                projection
-              ) => (
-                <div
-                  key={
-                    projection.id
-                  }
-                  className="
-                    rounded-md
-                    border
-                    p-4
-                  "
-                >
-                  <div
-                    className="
-                      flex
-                      flex-wrap
-                      items-start
-                      justify-between
-                      gap-3
-                    "
-                  >
-                    <div>
-                      <div
-                        className="
-                          font-medium
-                        "
-                      >
-                        {
-                          projection.name
-                        }
-                      </div>
-
-                      <div
-                        className="
-                          text-sm
-                          text-muted-foreground
-                        "
-                      >
-                        {
-                          projection
-                            .output_profile_name
-                        }
-                        {" · "}
-                        {
-                          projection
-                            .link_mode_label
-                        }
-                      </div>
-
-                      <div
-                        className="
-                          mt-1
-                          break-all
-                          text-xs
-                          text-muted-foreground
-                        "
-                      >
-                        {
-                          projection
-                            .destination_path
-                        }
-                      </div>
-                    </div>
-
-                    <div
-                      className="
-                        flex
-                        gap-2
-                      "
-                    >
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={
-                          async () => {
-                            setPreview(
-                              await previewProjection(
-                                projection.id
-                              )
-                            )
-                          }
-                        }
-                      >
-                        Preview
-                      </Button>
-
-                      <Button
-                        type="button"
-                        onClick={
-                          async () => {
-                            setRunResult(
-                              await runProjection(
-                                projection.id
-                              )
-                            )
-                          }
-                        }
-                      >
-                        Run
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            )
-          }
-
-          {preview && (
-            <div
-              className="
-                rounded-md
-                border
-                p-4
-              "
-            >
-              <div
-                className="
-                  font-medium
-                "
-              >
-                Preview
-              </div>
-
-              <div
-                className="
-                  mt-1
-                  text-sm
-                  text-muted-foreground
-                "
-              >
-                Showing
-                {" "}
-                {
-                  preview.preview_count
-                }
-                {" of "}
-                {
-                  preview.total
-                }
-              </div>
-
-              <div
-                className="
-                  mt-3
-                  max-h-80
-                  space-y-2
-                  overflow-y-auto
-                "
-              >
-                {
-                  preview.items.map(
-                    (
-                      item
-                    ) => (
-                      <div
-                        key={
-                          item.media_file_id
-                        }
-                        className="
-                          rounded
-                          bg-muted
-                          p-3
-                          text-xs
-                        "
-                      >
-                        <div
-                          className="
-                            font-medium
-                          "
-                        >
-                          {
-                            item.title
-                          }
-                        </div>
-
-                        <div
-                          className="
-                            break-all
-                          "
-                        >
-                          {
-                            item.destination_media_path
-                          }
-                        </div>
-
-                        {
-                          item.destination_nfo_path
-                          && (
-                            <div
-                              className="
-                                break-all
-                              "
-                            >
-                              {
-                                item.destination_nfo_path
-                              }
-                            </div>
-                          )
-                        }
-                      </div>
-                    )
-                  )
-                }
-              </div>
-            </div>
+        <CardContent className="space-y-4 text-sm">
+          {profiles.length > 0 ? (
+            <ul className="divide-y rounded-lg border">
+              {profiles.map(profile => (
+                <li key={profile.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <span className="font-medium">{profile.name}</span>
+                  <Badge variant="secondary">{profile.target_label}</Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground">No output profiles yet. Setting up a Jellyfin folder creates one for you.</p>
           )}
 
-          {runResult && (
-            <div
-              className="
-                rounded-md
-                border
-                p-4
-                text-sm
-              "
-            >
-              Created:
-              {" "}
-              {
-                runResult.created
-              }
-              {" · Existing: "}
-              {
-                runResult.already_exists
-              }
-              {" · Errors: "}
-              {
-                runResult.error_count
-              }
+          <form className="grid gap-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end" onSubmit={addProfile}>
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-name">New profile name</Label>
+              <Input id="profile-name" value={name} maxLength={255} onChange={event => setName(event.target.value)} />
             </div>
-          )}
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-target">Media server</Label>
+              <select id="profile-target" className={SELECT_CLASS} value={target} onChange={event => setTarget(event.target.value as OutputTarget)}>
+                {TARGETS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </div>
+            <Button type="submit" disabled={saving || !name.trim()}>{saving ? "Adding..." : "Add profile"}</Button>
+          </form>
+          {error && <p className="text-destructive" role="alert">{error}</p>}
         </CardContent>
       </Card>
     </div>
