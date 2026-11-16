@@ -13,7 +13,9 @@ The engine is described in [ALPHA6_PROJECTION_DESIGN.md](ALPHA6_PROJECTION_DESIG
 
 ## Layouts
 
-### Movies (Jellyfin)
+### Movies
+
+The trees below use the Jellyfin profile. Other profiles differ only in artwork; see [Profiles](#profiles).
 
 ```text
 The Matrix (1999)/
@@ -22,11 +24,11 @@ The Matrix (1999)/
   poster.jpg, fanart.jpg, logo.png, banner.jpg, landscape.jpg   the selected artwork, copied
 ```
 
-* **NFO:** title, original and sort title, plot, tagline, rating, release date, year, runtime, genres, studios, and IMDb, TMDB, and TVDB IDs as `<uniqueid>`, with the first known one as the default.
+* **NFO:** title, original and sort title, plot, tagline, rating, release date, year, runtime, genres, studios, and IMDb, TMDB, and TVDB IDs as `<uniqueid>`, with the first known one as the default (shows and episodes prefer TVDB, then TMDB).
 * **Name clashes:** two movies that would share a folder name get a stable suffix: an IMDb, TMDB, or TVDB ID, else a short LibraryForge ID (`The Matrix (1999) [imdb-tt0133093]`).
 * **Skipped:** movies with no file in the library right now are skipped and reported.
 
-### TV shows (Jellyfin)
+### TV shows
 
 ```text
 Bluey (2018)/
@@ -60,11 +62,32 @@ Artwork is copied, never linked, from the files LibraryForge selected for each i
 
 ## Profiles
 
-Phase 2 renders movies and TV for **Jellyfin**. Emby, Kodi, and generic profiles come in phase 3. Until then, a movie or TV projection using another profile is blocked with that explanation.
+A projection's output profile names its media server. Every profile uses the same folders, file names, and NFOs (Kodi-style `movie`, `tvshow`, and `episodedetails`, which all four read). Only artwork differs:
+
+| | Jellyfin | Emby | Kodi | Generic |
+| --- | --- | --- | --- | --- |
+| Movie art | `poster`, `fanart`, `logo`, `banner`, `landscape` | `poster`, `fanart`, `clearlogo`, `banner`, `landscape` | `<file>-poster`, `-fanart`, `-clearlogo`, `-banner`, `-landscape` | `poster`, `fanart` |
+| Show art | as movie art | as movie art | `poster`, `fanart`, `clearlogo`, `banner`, `landscape` | `poster`, `fanart` |
+| Season art | `Season 01/poster.jpg` | `Season 01/poster.jpg` | show folder: `season01-poster.jpg`, `season-specials-poster.jpg` | `Season 01/poster.jpg` |
+| Episode thumb | `<file>-thumb` | `<file>-thumb` | `<file>-thumb` | `<file>-thumb` |
+| Checked against | the maintainer's server | Emby's Movie and TV naming articles | Kodi's scanner source | |
+
+* **Verification:** Emby and Kodi are built to these conventions but not yet verified on a live server. Plans for them say so.
+* **Kodi setup:**
+  * Use the **Local information only** scraper so Kodi reads the NFOs and their ratings.
+  * By default Kodi picks up only poster and fanart for movies, and poster, fanart, and banner for shows. Set **Settings > Media > Videos > Artwork level** to **Maximum** for logos and landscape art.
+* **Changing a profile:**
+  * You can switch a projection to another of your profiles on its Projections page.
+  * Open plans are replaced, and the next plan renames the artwork. Media and NFOs stay put.
+* **Online video:** the Channels as TV shows layout is the same for every profile.
+
+The reviewed output for each profile is kept as golden fixtures in `backend/outputs/golden/`: one file list per profile and layout, and the NFOs.
 
 ## API
 
 * `GET`/`POST /api/libraries/<id>/projections/` lists or creates a library's projections.
   * The layout follows the library's content type; mixed libraries pass `layout`: `movies`, `tv`, or `youtube_shows`.
-  * Optional fields: `link_mode`, `hardlink_acknowledged`, `output_profile`, and `name`.
+  * Optional fields: `link_mode`, `hardlink_acknowledged`, `name`, and either `output_profile` or `target`.
+  * `target` (`jellyfin`, `emby`, `kodi`, or `generic`) uses your first profile for that server and creates one if you have none. Jellyfin is the default.
+* `PATCH /api/projections/<id>/` with `output_profile`, `destination_path`, `link_mode`, or `stale_policy` replaces the projection's open plans.
 * Plans, runs, history, and cancellation use the endpoints described in [JELLYFIN_YOUTUBE_SHOWS.md](JELLYFIN_YOUTUBE_SHOWS.md#api). For movies and TV, `channel` in the plan request limits a plan to one show.

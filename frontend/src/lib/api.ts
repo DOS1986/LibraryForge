@@ -1106,6 +1106,7 @@ export async function createLibraryProjection(
     layout?: "movies" | "tv" | "youtube_shows"
     link_mode: Projection["link_mode"]
     hardlink_acknowledged: boolean
+    target?: "jellyfin" | "emby" | "kodi" | "generic"
   },
 ) {
   await ensureCsrf()
@@ -1116,7 +1117,7 @@ export async function createLibraryProjection(
 // Projection settings (never touches disk).
 export async function updateProjection(
   projectionId: string,
-  values: Partial<Pick<Projection, "stale_policy" | "hardlink_acknowledged" | "enabled">>,
+  values: Partial<Pick<Projection, "stale_policy" | "hardlink_acknowledged" | "enabled" | "output_profile">>,
 ) {
   await ensureCsrf()
   return request<Projection>(`/api/projections/${projectionId}/`, { method: "PATCH", body: JSON.stringify(values) })

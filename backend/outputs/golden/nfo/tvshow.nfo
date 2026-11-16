@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<tvshow>
+  <title>Bluey</title>
+  <plot>A Blue Heeler puppy.</plot>
+  <mpaa>TV-Y</mpaa>
+  <year>2018</year>
+  <uniqueid type="tvdb" default="true">353546</uniqueid>
+  <uniqueid type="imdb">tt7678620</uniqueid>
+</tvshow>

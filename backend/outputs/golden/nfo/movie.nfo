@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<movie>
+  <title>The Matrix</title>
+  <originaltitle>The Matrix</originaltitle>
+  <plot>Neo wakes up.</plot>
+  <tagline>Free your mind.</tagline>
+  <mpaa>R</mpaa>
+  <premiered>1999-03-31</premiered>
+  <year>1999</year>
+  <runtime>90</runtime>
+  <genre>Action</genre>
+  <genre>Sci-Fi</genre>
+  <studio>Warner Bros.</studio>
+  <uniqueid type="imdb" default="true">tt0133093</uniqueid>
+  <uniqueid type="tmdb">603</uniqueid>
+</movie>

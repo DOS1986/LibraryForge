@@ -44,7 +44,7 @@ from outputs.models import (
     ProjectionRunAction,
 )
 from outputs.security import ProjectionSecurityError, validate_projection_destination
-from outputs.services import fileops, movies_tv
+from outputs.services import fileops, movies_tv, profiles
 from outputs.services import youtube_shows as shows
 
 PLAN_TTL = timedelta(minutes=int(os.environ.get("LIBRARYFORGE_PROJECTION_PLAN_MINUTES", "30") or 30))
@@ -61,8 +61,6 @@ LAYOUTS = {
     Projection.Layout.MOVIES: movies_tv,
     Projection.Layout.TV: movies_tv,
 }
-# Phase 2 renders movies and TV for Jellyfin; other profiles follow.
-PROFILE_TARGETS = {Projection.Layout.MOVIES: {"jellyfin"}, Projection.Layout.TV: {"jellyfin"}}
 
 # Findings that stop a plan from being applied.
 BLOCKING = "blocking"
@@ -94,15 +92,6 @@ def _policy_findings(projection: Projection, user) -> list[dict[str, str]]:
     library = projection.library
     if projection.layout not in LAYOUTS:
         findings.append(_finding("UNSUPPORTED_LAYOUT", BLOCKING, "This projection's layout isn't supported yet."))
-    targets = PROFILE_TARGETS.get(projection.layout)
-    if targets and projection.output_profile.target not in targets:
-        findings.append(
-            _finding(
-                "PROFILE_NOT_SUPPORTED",
-                BLOCKING,
-                f"{projection.output_profile.get_target_display()} output for this layout isn't available yet; use a Jellyfin profile.",
-            )
-        )
     if not projection.enabled:
         findings.append(_finding("DISABLED", BLOCKING, "This projection is turned off. Turn it on to build a plan."))
     try:
@@ -251,7 +240,7 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
         desired_files = {item.media_file.id for item in planned["desired"] if item.media_file is not None}
         actions, guard_findings = _guard(projection, layout.filter_scope(planned["actions"], channel), desired_files)
         findings.extend(guard_findings)
-        overview = planned.get("overview") or {}
+        overview = {**(planned.get("overview") or {}), "profile": profiles.for_target(projection.output_profile.target).describe()}
     if legacy.get("unverified"):
         findings.append(
             _finding(

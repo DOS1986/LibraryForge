@@ -1,6 +1,6 @@
 # 0.1.0-alpha.6 — Projection and Output Engine (design)
 
-Status: approved 16 November 2026. Phases 1 and 2 implemented (see PROJECTIONS.md).
+Status: approved 16 November 2026. Phases 1 to 3 implemented (see PROJECTIONS.md).
 
 This design adapts the reconstructed "LibraryForge Projection and Output Engine" document (ChatGPT, 16 November 2026) to how LibraryForge is used today and to an alpha-sized scope. Where this document differs from that one, this one is the plan, and the reason is given.
 
@@ -71,8 +71,9 @@ Deleting a projection, profile, or library never deletes output and never cascad
 | Series / season | `Show (Year)/Season 01/` | same | same | same |
 | Episode file | `Show S01E02 - Title.ext` | same | same | same |
 | Show NFO | `tvshow.nfo` | `tvshow.nfo` | `tvshow.nfo` | `tvshow.nfo` |
-| Movie / show art | `poster`, `fanart`, `logo`, `banner`, `landscape` | to verify | `<basename>-poster`, `-fanart` for movies | `poster`, `fanart` |
-| Episode thumb | `<basename>-thumb` | to verify | `<basename>-thumb` | `<basename>-thumb` |
+| Movie / show art | `poster`, `fanart`, `logo`, `banner`, `landscape` | `poster`, `fanart`, `clearlogo`, `banner`, `landscape` | movies `<basename>-poster`, `-fanart`, `-clearlogo`, `-banner`, `-landscape`; shows without the prefix | `poster`, `fanart` |
+| Season art | `Season 01/poster` | `Season 01/poster` | show folder `season01-poster`, `season-specials-poster` | `Season 01/poster` |
+| Episode thumb | `<basename>-thumb` | `<basename>-thumb` | `<basename>-thumb` | `<basename>-thumb` |
 | Online video | existing Channels as TV shows layout | same | same | same |
 
 Exact Emby and Kodi names are checked against their documentation before phase 3 (section 11). NFOs are complete, deterministic outputs (stable element order, no timestamps), with typed `<uniqueid>` values for known namespaces only. Multi-episode files, disc folders, stacked parts, and extras are blocked with a reason.
@@ -141,7 +142,10 @@ The alpha.5 `shows-plan` and `shows-sync` routes and the template `preview` and 
 * Existing Shows manifest entries are verified automatically: a link must be the same file as its source, and an NFO's or image's hash must match. Verified entries become `legacy_verified`; anything else becomes a conflict for review. Episode numbers are preserved.
 * The "Youtube Shows" library is removed after confirmation. It's then blocked by D4.
 * No migration copies, renames, or deletes files.
-* Before phase 3, Emby's and Kodi's published naming, NFO, and artwork conventions are verified and recorded here.
+* Emby's and Kodi's conventions were verified before phase 3 and are recorded in section 5 and in `outputs/services/profiles.py`:
+  * Emby: its Movie Naming and TV Naming support articles.
+  * Kodi: its scanner source, `ART::AddLocalItemArtwork` and `CVideoInfoScannerArt::GetSeasonThumbs` in xbmc/xbmc. The wiki refused automated reads.
+  * Emby's NFO article wasn't found. Emby reads Kodi-style NFOs, and that's unverified until it's tried on a live server.
 
 ## 12. Deferred (not in alpha.6)
 

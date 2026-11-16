@@ -774,6 +774,7 @@ export interface ProjectionPlanDetail {
     series?: { id: string; title: string; folder: string; rating: string; episodes: number; pending: number }[]
     movies?: number
     skipped?: number
+    profile?: { target: string; label: string; verified: boolean; notes: string[] }
   }
   created_at: string
   expires_at: string

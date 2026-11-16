@@ -19,6 +19,7 @@ import {
   getProjectionRunJournal,
   getProjectionRuns,
   getLibraryProjections,
+  getOutputProfiles,
   requestProjectionRun,
   updateProjection,
 } from "@/lib/api"
@@ -26,6 +27,7 @@ import { formatDateTime } from "@/lib/format"
 import { newOperationId } from "@/lib/ids"
 
 import type {
+  OutputProfile,
   Paged,
   PlanActionKind,
   PlanActionRow,
@@ -95,7 +97,7 @@ type Layout = "movies" | "tv" | "youtube_shows"
 
 const LAYOUT_COPY: Record<Layout, { title: string; description: string; folder: string; scope: string; server: string }> = {
   youtube_shows: {
-    title: "Jellyfin folder: channels as TV shows",
+    title: "channels as TV shows",
     description:
       "One show per channel with tvshow.nfo, poster, and fanart, a season per upload year, and each video renamed with its own NFO and thumbnail. TubeArchivist's folder is never changed.",
     folder: "YouTube Shows",
@@ -103,21 +105,35 @@ const LAYOUT_COPY: Record<Layout, { title: string; description: string; folder: 
     server: "Shows",
   },
   movies: {
-    title: "Jellyfin folder: movies",
+    title: "movies",
     description:
       "Each movie in its own Title (Year) folder with a renamed copy or link of its main version, a movie NFO, and its selected artwork. Your library's folders are never changed.",
-    folder: "Jellyfin Movies",
+    folder: "{server} Movies",
     scope: "",
     server: "Movies",
   },
   tv: {
-    title: "Jellyfin folder: TV shows",
+    title: "TV shows",
     description:
       "Each show in a Show (Year) folder with tvshow.nfo and artwork, Season 01 folders with season art, and every episode renamed Show S01E02 - Title with its own NFO and thumbnail. Your library's folders are never changed.",
-    folder: "Jellyfin TV",
+    folder: "{server} TV",
     scope: "Shows",
     server: "Shows",
   },
+}
+
+
+type Target = OutputProfile["target"]
+
+const SERVERS: { value: Target; label: string }[] = [
+  { value: "jellyfin", label: "Jellyfin" },
+  { value: "emby", label: "Emby" },
+  { value: "kodi", label: "Kodi" },
+  { value: "generic", label: "Generic" },
+]
+
+function serverLabel(target: string) {
+  return SERVERS.find(item => item.value === target)?.label ?? "Media server"
 }
 
 
@@ -126,12 +142,13 @@ function layoutFor(contentType: string): Layout | null {
 }
 
 
-function suggestedDestination(libraryPath: string, layout: Layout) {
+function suggestedDestination(libraryPath: string, layout: Layout, target: Target) {
   // Next to the library folder: same share and volume, so hardlinks work.
   const separator = libraryPath.includes("\\") ? "\\" : "/"
   const trimmed = libraryPath.replace(/[\\/]+$/, "")
   const parent = trimmed.slice(0, Math.max(trimmed.lastIndexOf(separator), 0))
-  return parent ? `${parent}${separator}${LAYOUT_COPY[layout].folder}` : ""
+  const folder = LAYOUT_COPY[layout].folder.replace("{server}", serverLabel(target))
+  return parent ? `${parent}${separator}${folder}` : ""
 }
 
 
@@ -157,7 +174,9 @@ export function ProjectionPanel({
   const [newLayout, setNewLayout] = useState<Layout>(fixedLayout ?? "movies")
   const [projections, setProjections] = useState<Projection[]>([])
   const [selectedId, setSelectedId] = useState("")
-  const [destination, setDestination] = useState(() => suggestedDestination(libraryPath, fixedLayout ?? "movies"))
+  const [target, setTarget] = useState<Target>("jellyfin")
+  const [profiles, setProfiles] = useState<OutputProfile[]>([])
+  const [destination, setDestination] = useState(() => suggestedDestination(libraryPath, fixedLayout ?? "movies", "jellyfin"))
   const [linkMode, setLinkMode] = useState<Projection["link_mode"]>("hardlink")
   const [acknowledge, setAcknowledge] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -192,7 +211,8 @@ export function ProjectionPanel({
   }, [])
 
   useEffect(() => {
-    void loadProjections().catch(err => setError(errorMessage(err, "Unable to load Jellyfin folders.")))
+    void loadProjections().catch(err => setError(errorMessage(err, "Unable to load this library's folders.")))
+    void getOutputProfiles().then(setProfiles).catch(() => undefined)
   }, [loadProjections])
 
   useEffect(() => {
@@ -237,11 +257,13 @@ export function ProjectionPanel({
         layout: fixedLayout ? undefined : newLayout,
         link_mode: linkMode,
         hardlink_acknowledged: linkMode === "hardlink" && acknowledge,
+        target,
       })
+      void getOutputProfiles().then(setProfiles).catch(() => undefined)
       await loadProjections()
       setSelectedId(created.id)
     } catch (err) {
-      setCreateError(errorMessage(err, "Unable to set up the Jellyfin folder."))
+      setCreateError(errorMessage(err, "Unable to set up the folder."))
     } finally {
       setCreating(false)
     }
@@ -344,6 +366,9 @@ export function ProjectionPanel({
   const needsAcknowledgement = selected && selected.link_mode === "hardlink" && !selected.hardlink_acknowledged
   const layout: Layout = (selected?.layout as Layout | undefined) ?? fixedLayout ?? newLayout
   const copy = LAYOUT_COPY[layout] ?? LAYOUT_COPY.movies
+  const server = selected?.output_target ?? target
+  const serverName = serverLabel(server)
+  const profileInfo = plan?.overview.profile
   const scopes = layout === "youtube_shows"
     ? (plan?.overview.channels ?? []).map(item => ({ id: item.id, title: item.title }))
     : layout === "tv"
@@ -354,7 +379,7 @@ export function ProjectionPanel({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{copy.title}</CardTitle>
+          <CardTitle>{serverName} folder: {copy.title}</CardTitle>
           <CardDescription>
             {copy.description} Ratings from the Ratings tab are written into every NFO. Changes are planned for you to
             review, then applied in the background by the scan worker.
@@ -386,7 +411,7 @@ export function ProjectionPanel({
                     onChange={event => {
                       const next = event.target.value as Layout
                       setNewLayout(next)
-                      setDestination(suggestedDestination(libraryPath, next))
+                      setDestination(suggestedDestination(libraryPath, next, target))
                     }}
                   >
                     <option value="movies">Movies</option>
@@ -395,6 +420,25 @@ export function ProjectionPanel({
                   </select>
                 </label>
               )}
+              <label className="block space-y-1">
+                <span className="block text-xs font-medium text-muted-foreground">Media server</span>
+                <select
+                  className={SELECT_CLASS}
+                  value={target}
+                  onChange={event => {
+                    const next = event.target.value as Target
+                    setTarget(next)
+                    setDestination(suggestedDestination(libraryPath, fixedLayout ?? newLayout, next))
+                  }}
+                >
+                  {SERVERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+                {target !== "jellyfin" && (
+                  <span className="block text-xs text-muted-foreground">
+                    Built to {serverLabel(target)}&apos;s published conventions; not yet checked on a live server.
+                  </span>
+                )}
+              </label>
               <div className="space-y-2">
                 <Label htmlFor="youtube-shows-destination">Destination folder</Label>
                 <Input
@@ -421,7 +465,7 @@ export function ProjectionPanel({
                   <input type="checkbox" className="mt-0.5 size-4" checked={acknowledge} onChange={event => setAcknowledge(event.target.checked)} />
                   <span>
                     I understand a hardlink is the same file as the original under a second name, so nothing should write
-                    into media through the Jellyfin folder.
+                    into media through this folder.
                   </span>
                 </label>
               )}
@@ -436,6 +480,7 @@ export function ProjectionPanel({
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium break-all">{selected.destination_path}</span>
+                <Badge variant="secondary">{serverName}</Badge>
                 <Badge variant="secondary">{selected.link_mode_label}</Badge>
                 {!selected.enabled && <Badge variant="outline">Turned off</Badge>}
                 {history?.latest_run && (
@@ -450,8 +495,8 @@ export function ProjectionPanel({
                 <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3" role="note">
                   <p>
                     This folder hardlinks videos: each one is the same file as the original under a second name, so it uses
-                    no extra space. Nothing should write into the videos through the Jellyfin folder (Jellyfin writes NFOs
-                    and images beside them, which is fine).
+                    no extra space. Nothing should write into the videos through this folder (a media server writing NFOs
+                    and images beside them is fine).
                   </p>
                   <Button size="sm" disabled={busy} onClick={() => void update({ hardlink_acknowledged: true })}>
                     I understand, use hardlinks
@@ -480,6 +525,21 @@ export function ProjectionPanel({
                     <option value="keep">Keep them</option>
                   </select>
                 </label>
+                {profiles.length > 1 && (
+                  <label className="space-y-1">
+                    <span className="block text-xs font-medium text-muted-foreground">Media server profile</span>
+                    <select
+                      className={SELECT_CLASS}
+                      value={selected.output_profile}
+                      disabled={busy || Boolean(active)}
+                      onChange={event => void update({ output_profile: event.target.value })}
+                    >
+                      {profiles.map(item => (
+                        <option key={item.id} value={item.id}>{item.name} ({item.target_label})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {copy.scope && (
                   <label className="space-y-1">
                     <span className="block text-xs font-medium text-muted-foreground">{copy.scope}</span>
@@ -536,6 +596,11 @@ export function ProjectionPanel({
 
               {plan && (
                 <div className="space-y-4">
+                  {profileInfo && profileInfo.notes.length > 0 && (
+                    <ul className="space-y-1 rounded-lg border bg-muted/40 p-3 text-xs" role="note">
+                      {profileInfo.notes.map(note => <li key={note}>{note}</li>)}
+                    </ul>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={plan.status === "ready" ? "default" : plan.status === "blocked" ? "destructive" : "secondary"}>
                       Plan {plan.status}
@@ -698,22 +763,41 @@ export function ProjectionPanel({
               )}
 
               <div className="space-y-1 rounded-lg border bg-muted/40 p-3 text-xs">
-                <p className="font-medium">In Jellyfin</p>
-                <ol className="list-decimal space-y-1 pl-4">
-                  <li>Add {selected.destination_path} as a <span className="font-medium">{copy.server}</span> library.</li>
-                  <li>
-                    Keep the <span className="font-medium">Nfo</span> reader on and turn off online metadata downloaders
-                    {layout === "youtube_shows" ? " and the TubeArchivist plugin" : ""} for it, so the NFOs and their ratings are used.
-                  </li>
-                  <li>Give your child&apos;s account access to this library, not the TubeArchivist one.</li>
-                </ol>
+                <p className="font-medium">In {serverName}</p>
+                {server === "kodi" ? (
+                  <ol className="list-decimal space-y-1 pl-4">
+                    <li>
+                      Add {selected.destination_path} as a video source and set its content to{" "}
+                      <span className="font-medium">{layout === "movies" ? "Movies" : "TV shows"}</span>.
+                    </li>
+                    <li>
+                      Choose the <span className="font-medium">Local information only</span> scraper, so Kodi reads the NFOs
+                      and their ratings instead of looking items up online.
+                    </li>
+                    <li>For logos and landscape art, set Settings &gt; Media &gt; Videos &gt; Artwork level to Maximum.</li>
+                  </ol>
+                ) : server === "generic" ? (
+                  <p>Point your player at {selected.destination_path}. It holds Kodi-style NFOs with poster and fanart images.</p>
+                ) : (
+                  <ol className="list-decimal space-y-1 pl-4">
+                    <li>Add {selected.destination_path} as a <span className="font-medium">{copy.server}</span> library.</li>
+                    <li>
+                      Keep the <span className="font-medium">Nfo</span> metadata reader on and turn off online metadata downloaders
+                      {layout === "youtube_shows" ? " and the TubeArchivist plugin" : ""} for it, so the NFOs and their ratings are used.
+                    </li>
+                    <li>
+                      Give your child&apos;s account access to this library
+                      {layout === "youtube_shows" ? ", not the TubeArchivist one" : " instead of the original"}.
+                    </li>
+                  </ol>
+                )}
               </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {selected && <JellyfinRefreshCard libraryId={libraryId} />}
+      {selected && server === "jellyfin" && <JellyfinRefreshCard libraryId={libraryId} />}
     </div>
   )
 }

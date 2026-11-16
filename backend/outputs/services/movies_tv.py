@@ -1,4 +1,8 @@
-"""Movie and TV layouts for projections (Jellyfin profile).
+"""Movie and TV layouts for projections.
+
+Folder and file names are the same for every profile; artwork names and
+season-art placement come from the projection's profile
+(``outputs.services.profiles``). The Jellyfin profile looks like this:
 
 Movies::
 
@@ -40,6 +44,7 @@ from catalog.services.canonical import _movie_year
 from media.models import MediaItem
 from metadata.services.nfo_fields import Target, catalog_values
 from outputs.models import Projection, ProjectionFile
+from outputs.services import profiles
 from outputs.services.fileops import Desired, _xml, diff, safe_segment
 
 Kind = ProjectionFile.Kind
@@ -48,14 +53,9 @@ MAX_NAME = 100
 MAX_EPISODE_TITLE = 80
 MAX_PATH = 250  # whole destination path, to stay clear of Windows' 260 limit
 
-ART_ROLES = {
-    ArtworkFile.ArtworkType.PRIMARY: "poster",
-    ArtworkFile.ArtworkType.BACKDROP: "fanart",
-    ArtworkFile.ArtworkType.LOGO: "logo",
-    ArtworkFile.ArtworkType.BANNER: "banner",
-    ArtworkFile.ArtworkType.THUMB: "landscape",
-}
 UNIQUE_IDS = ("imdb", "tmdb", "tvdb")
+# Shows and episodes are matched by TVDB first, as their scrapers do.
+TV_UNIQUE_IDS = ("tvdb", "tmdb", "imdb")
 
 
 def _key(path: str) -> str:
@@ -84,23 +84,23 @@ def _primary_files(items: list[MediaItem]) -> dict[Any, Any]:
     return files
 
 
-def _selected_art(library, target_type: str, target_ids: list) -> dict[Any, list[ArtworkFile]]:
+def _selected_art(library, target_type: str, target_ids: list, types) -> dict[Any, list[ArtworkFile]]:
     art: dict[Any, list[ArtworkFile]] = defaultdict(list)
     for artwork in ArtworkFile.objects.filter(
         library=library, target_type=target_type, target_id__in=target_ids, is_selected=True, is_present=True
-    ):
-        if artwork.artwork_type in ART_ROLES and not is_embedded_artwork_path(artwork.relative_path):
+    ).order_by("artwork_type", "relative_path"):
+        if artwork.artwork_type in types and not is_embedded_artwork_path(artwork.relative_path):
             art[artwork.target_id].append(artwork)
     return art
 
 
-def _art_files(folder: str, artworks: list[ArtworkFile], *, media_file, group: tuple[str, str], name=None) -> list[Desired]:
-    """Desired copies of selected artwork. ``name`` overrides the file name (episode thumbs)."""
+def _art_files(artworks: list[ArtworkFile], place, *, media_file, group: tuple[str, str]) -> list[Desired]:
+    """Desired copies of selected artwork. ``place(artwork)`` gives its (folder, file stem)."""
 
     output = []
     for artwork in artworks:
         extension = _extension(artwork.extension or PurePosixPath(artwork.relative_path).suffix)
-        stem = name or ART_ROLES[artwork.artwork_type]
+        folder, stem = place(artwork)
         output.append(
             Desired(
                 path=f"{folder}/{stem}.{extension}" if folder else f"{stem}.{extension}",
@@ -116,10 +116,10 @@ def _art_files(folder: str, artworks: list[ArtworkFile], *, media_file, group: t
     return output
 
 
-def _unique_ids(external_ids: dict) -> list[tuple[str, Any, dict[str, str]]]:
+def _unique_ids(external_ids: dict, order=UNIQUE_IDS) -> list[tuple[str, Any, dict[str, str]]]:
     ids = {str(key).casefold(): str(value).strip() for key, value in (external_ids or {}).items() if str(value).strip()}
     output = []
-    for index, name in enumerate(namespace for namespace in UNIQUE_IDS if ids.get(namespace)):
+    for index, name in enumerate(namespace for namespace in order if ids.get(namespace)):
         attributes = {"type": name}
         if index == 0:
             attributes["default"] = "true"
@@ -152,7 +152,7 @@ def movie_nfo(item: MediaItem, media_file) -> bytes:
 def show_nfo(series: Series) -> bytes:
     values = catalog_values(Target("series", series, series.library, series.title))
     order = ["title", "originaltitle", "sorttitle", "plot", "tagline", "mpaa", "year", "genre", "studio"]
-    return _xml("tvshow", _fields(values, order) + _unique_ids(series.external_ids))
+    return _xml("tvshow", _fields(values, order) + _unique_ids(series.external_ids, TV_UNIQUE_IDS))
 
 
 def episode_nfo(episode: Episode, media_file) -> bytes:
@@ -163,7 +163,7 @@ def episode_nfo(episode: Episode, media_file) -> bytes:
     # An episode without its own rating carries its show's, for parental controls.
     values["mpaa"] = values.get("mpaa") or series.content_rating
     order = ["title", "showtitle", "season", "episode", "aired", "plot", "runtime", "mpaa"]
-    return _xml("episodedetails", _fields(values, order) + _unique_ids(episode.external_ids))
+    return _xml("episodedetails", _fields(values, order) + _unique_ids(episode.external_ids, TV_UNIQUE_IDS))
 
 
 def _suffix(external_ids: dict, object_id) -> str:
@@ -229,7 +229,7 @@ def _movie_year_value(item: MediaItem):
     return item.release_date.year if item.release_date else None
 
 
-def _movies(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], dict[str, Any]]:
+def _movies(projection: Projection, profile: profiles.Profile) -> tuple[list[Desired], list[dict[str, str]], dict[str, Any]]:
     library = projection.library
     items = list(MediaItem.objects.filter(library=library, media_type=MediaItem.MediaType.MOVIE).order_by("title", "id"))
     files = _primary_files(items)
@@ -240,7 +240,7 @@ def _movies(projection: Projection) -> tuple[list[Desired], list[dict[str, str]]
         findings.append(_finding("NO_FILE", "warning", f"{len(missing)} movie(s) skipped: no file in the library right now."))
 
     names = _folder_names(present, lambda item: (item.title or "Untitled", _movie_year_value(item)))
-    art = _selected_art(library, ArtworkFile.TargetType.MEDIA_ITEM, [item.id for item in present])
+    art = _selected_art(library, ArtworkFile.TargetType.MEDIA_ITEM, [item.id for item in present], profile.art)
     desired: list[Desired] = []
     for item in present:
         media_file = files[item.id]
@@ -250,7 +250,14 @@ def _movies(projection: Projection) -> tuple[list[Desired], list[dict[str, str]]
         common = {"channel": None, "media_file": media_file, "group_id": group[0], "group_title": group[1]}
         desired.append(Desired(path=f"{folder}/{folder}.{extension}", kind=Kind.VIDEO, **common))
         desired.append(Desired(path=f"{folder}/{folder}.nfo", kind=Kind.MOVIE_NFO, content=movie_nfo(item, media_file), **common))
-        desired.extend(_art_files(folder, art.get(item.id, []), media_file=media_file, group=group))
+        desired.extend(
+            _art_files(
+                art.get(item.id, []),
+                lambda artwork, folder=folder: (folder, profile.movie_art(folder, artwork.artwork_type)),
+                media_file=media_file,
+                group=group,
+            )
+        )
     return desired, findings, {"movies": len(present), "skipped": len(missing)}
 
 
@@ -259,7 +266,7 @@ def _movies(projection: Projection) -> tuple[list[Desired], list[dict[str, str]]
 # ---------------------------------------------------------------------------
 
 
-def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], dict[str, Any]]:
+def _tv(projection: Projection, profile: profiles.Profile) -> tuple[list[Desired], list[dict[str, str]], dict[str, Any]]:
     library = projection.library
     episodes = list(
         Episode.objects.filter(season__series__library=library)
@@ -280,10 +287,12 @@ def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], di
 
     series_list = sorted({e.season.series for e in usable}, key=lambda value: (value.title.casefold(), str(value.id)))
     names = _folder_names(series_list, lambda series: (series.title or "Untitled", series.start_year))
-    series_art = _selected_art(library, ArtworkFile.TargetType.SERIES, [s.id for s in series_list])
+    series_art = _selected_art(library, ArtworkFile.TargetType.SERIES, [s.id for s in series_list], profile.art)
     seasons = {e.season for e in usable}
-    season_art = _selected_art(library, ArtworkFile.TargetType.SEASON, [s.id for s in seasons])
-    episode_thumbs = _selected_art(library, ArtworkFile.TargetType.EPISODE, [e.id for e in usable])
+    season_art = _selected_art(library, ArtworkFile.TargetType.SEASON, [s.id for s in seasons], profile.art)
+    episode_thumbs = _selected_art(
+        library, ArtworkFile.TargetType.EPISODE, [e.id for e in usable], {ArtworkFile.ArtworkType.PRIMARY, ArtworkFile.ArtworkType.THUMB}
+    )
 
     desired: list[Desired] = []
     first_file: dict[Any, Any] = {}
@@ -309,7 +318,12 @@ def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], di
         desired.append(Desired(path=f"{base}.nfo", kind=Kind.EPISODE_NFO, content=episode_nfo(episode, media_file), **common))
         stem = PurePosixPath(base).name
         desired.extend(
-            _art_files(season_folder, episode_thumbs.get(episode.id, [])[:1], media_file=media_file, group=group, name=f"{stem}-thumb")
+            _art_files(
+                episode_thumbs.get(episode.id, [])[:1],
+                lambda _artwork, folder=season_folder, stem=stem: (folder, f"{stem}-thumb"),
+                media_file=media_file,
+                group=group,
+            )
         )
     if duplicates:
         findings.append(_finding("DUPLICATE_EPISODE", "warning", f"{duplicates} episode(s) skipped: another file has the same episode number."))
@@ -321,10 +335,13 @@ def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], di
             continue
         seasons_done.add(season.id)
         group = (str(season.series_id), season.series.title)
+        show = names[season.series_id]
         desired.extend(
             _art_files(
-                f"{names[season.series_id]}/Season {season.season_number:02d}",
                 season_art.get(season.id, []),
+                lambda artwork, show=show, season=season: profile.season_art(
+                    show, f"{show}/Season {season.season_number:02d}", season.season_number, artwork.artwork_type
+                ),
                 media_file=first_file[season.series_id],
                 group=group,
             )
@@ -335,7 +352,14 @@ def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], di
         group = (str(series.id), series.title)
         common = {"channel": None, "media_file": first_file[series.id], "group_id": group[0], "group_title": group[1]}
         desired.append(Desired(path=f"{names[series.id]}/tvshow.nfo", kind=Kind.SHOW_NFO, content=show_nfo(series), **common))
-        desired.extend(_art_files(names[series.id], series_art.get(series.id, []), media_file=first_file[series.id], group=group))
+        desired.extend(
+            _art_files(
+                series_art.get(series.id, []),
+                lambda artwork, folder=names[series.id]: (folder, profile.art[artwork.artwork_type]),
+                media_file=first_file[series.id],
+                group=group,
+            )
+        )
     overview = {
         "series": [
             {"id": str(series.id), "title": series.title, "folder": names[series.id], "rating": series.content_rating}
@@ -352,10 +376,11 @@ def _tv(projection: Projection) -> tuple[list[Desired], list[dict[str, str]], di
 
 
 def plan(projection: Projection) -> dict[str, Any]:
+    profile = profiles.for_target(projection.output_profile.target)
     if projection.layout == Projection.Layout.MOVIES:
-        desired, findings, overview = _movies(projection)
+        desired, findings, overview = _movies(projection, profile)
     else:
-        desired, findings, overview = _tv(projection)
+        desired, findings, overview = _tv(projection, profile)
     desired = _check_paths(projection, desired, findings)
     manifest = {row.relative_path: row for row in ProjectionFile.objects.filter(projection=projection)}
     actions = diff(desired, manifest)

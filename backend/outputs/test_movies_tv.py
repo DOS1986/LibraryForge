@@ -1,4 +1,4 @@
-"""Movie and TV projections (Jellyfin): layouts, NFOs, copied artwork, findings."""
+"""Movie and TV projections: layouts, NFOs, copied artwork, findings."""
 
 import datetime
 import os
@@ -16,7 +16,7 @@ from catalog.models import ArtworkFile, Episode, MediaVersion, Season, Series
 from jobs.models import ScanJob
 from libraries.models import Library
 from media.models import MediaFile, MediaItem
-from outputs.models import OutputProfile, Projection, ProjectionRun
+from outputs.models import Projection, ProjectionRun
 from outputs.services.engine import execute_run, run_detail
 
 POSTER = b"\xff\xd8\xff\xe0poster-v1"
@@ -188,12 +188,6 @@ class MovieTests(_Base):
         with patch("outputs.services.movies_tv.MAX_PATH", len(str(self.dest)) + 30):
             data = self.plan(self.create(self.movies))
         self.assertIn("PATH_TOO_LONG", {finding["code"] for finding in data["findings"]})
-
-    def test_other_profiles_wait_for_phase_three(self):
-        kodi = OutputProfile.objects.create(owner=self.user, name="Kodi", target=OutputProfile.Target.KODI)
-        data = self.plan(self.create(self.movies, output_profile=str(kodi.id)))
-        self.assertEqual(data["status"], "blocked")
-        self.assertEqual(data["findings"][0]["code"], "PROFILE_NOT_SUPPORTED")
 
 
 class TvTests(_Base):

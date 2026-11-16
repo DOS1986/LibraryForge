@@ -17,6 +17,13 @@ pre-1.0 development.
   * Artwork is copied and refreshed when its source changes. Folder-name clashes get stable ID suffixes.
   * No-file items, multi-episode files, overlong paths, and name collisions are skipped with notes.
   * Plans can be limited to one show.
+* Added Emby, Kodi, and generic output profiles for movie and TV projections. They're built to each server's published conventions and labeled as not yet verified on a live server:
+  * Every profile uses the same folders and NFOs.
+  * Kodi names movie art after the file (`<file>-poster.jpg`, `-clearlogo.png`) and puts season art in the show folder (`season01-poster.jpg`).
+  * Emby uses `clearlogo`. Generic projects poster and fanart only.
+  * Golden file-list and NFO fixtures in `backend/outputs/golden/` cover each profile.
+* Added a media server choice when setting up a projection (`target` on the create endpoint) and a profile switch for existing projections. Changing a projection's profile, folder, media policy, or stale policy replaces its open plans.
+* Changed show and episode NFOs to mark the TVDB ID as the default, then TMDB.
 * Added `GET/POST /api/libraries/<id>/projections/` for any layout. The Projections page now sets up and runs movie, TV, and online-video folders.
 * Added copy and symlink media policies for projections, alongside hardlinks.
 

@@ -19,6 +19,9 @@ from outputs.services import engine
 from .models import OutputProfile, Projection, ProjectionPlan, ProjectionRun
 from .serializers import OutputProfileSerializer, ProjectionSerializer
 
+# Settings a plan is built from; changing one replaces open plans.
+_PLAN_INPUTS = ("output_profile_id", "destination_path", "link_mode", "layout", "stale_policy")
+
 
 class OutputProfileViewSet(viewsets.ModelViewSet):
     serializer_class = OutputProfileSerializer
@@ -46,6 +49,15 @@ class ProjectionViewSet(viewsets.ModelViewSet):
         if library_id:
             queryset = queryset.filter(library_id=library_id)
         return queryset
+
+    def perform_update(self, serializer):
+        before = {field: getattr(serializer.instance, field) for field in _PLAN_INPUTS}
+        projection = serializer.save()
+        if any(getattr(projection, field) != value for field, value in before.items()):
+            # Plans built for the old settings would write the wrong files.
+            ProjectionPlan.objects.filter(projection=projection, status=ProjectionPlan.Status.READY).update(
+                status=ProjectionPlan.Status.SUPERSEDED
+            )
 
     @action(detail=True, methods=["get", "post"])
     def plans(self, request, pk=None):
@@ -194,15 +206,7 @@ def library_youtube_shows_view(request, library_id):
     if Projection.objects.filter(library=library, destination_path=destination).exists():
         raise ValidationError({"destination_path": "This library already has a projection to that folder."})
 
-    profile = (
-        OutputProfile.objects.filter(owner=request.user, target=OutputProfile.Target.JELLYFIN).order_by("name").first()
-    )
-    if profile is None:
-        profile, _created = OutputProfile.objects.get_or_create(
-            owner=request.user,
-            name="Jellyfin",
-            defaults={"target": OutputProfile.Target.JELLYFIN, "nfo_root_element": "episodedetails"},
-        )
+    profile = profile_for_target(request.user, OutputProfile.Target.JELLYFIN)
     projection = Projection.objects.create(
         library=library,
         output_profile=profile,
@@ -222,10 +226,24 @@ _LAYOUT_FOR_TYPE = {
     "online_video": Projection.Layout.YOUTUBE_SHOWS,
 }
 _DEFAULT_FOLDER = {
-    Projection.Layout.MOVIES: "Jellyfin movies",
-    Projection.Layout.TV: "Jellyfin TV shows",
-    Projection.Layout.YOUTUBE_SHOWS: "Jellyfin YouTube shows",
+    Projection.Layout.MOVIES: "movies",
+    Projection.Layout.TV: "TV shows",
+    Projection.Layout.YOUTUBE_SHOWS: "YouTube shows",
 }
+
+
+def profile_for_target(user, target: str) -> OutputProfile:
+    """Your first profile for a media server, created (as "Jellyfin", "Kodi", ...) if you have none."""
+
+    profile = OutputProfile.objects.filter(owner=user, target=target).order_by("name").first()
+    if profile is not None:
+        return profile
+    label = OutputProfile.Target(target).label
+    name = label
+    if OutputProfile.objects.filter(owner=user, name=name).exists():
+        name = f"{label} output"
+    profile, _created = OutputProfile.objects.get_or_create(owner=user, name=name, defaults={"target": target})
+    return profile
 
 
 @api_view(["GET", "POST"])
@@ -236,7 +254,9 @@ def library_projections_view(request, library_id):
     Body: ``destination_path``; optional ``name``, ``layout`` (required for a
     mixed library: movies, tv, or youtube_shows), ``link_mode`` (hardlink,
     copy, or symlink; hardlink by default), ``hardlink_acknowledged``, and
-    ``output_profile`` (defaults to your Jellyfin profile, created if needed).
+    ``output_profile`` or ``target`` (jellyfin, emby, kodi, or generic: your
+    first profile for that media server, created if needed; Jellyfin by
+    default).
     """
 
     library = get_object_or_404(Library, id=library_id, owner=request.user)
@@ -262,13 +282,14 @@ def library_projections_view(request, library_id):
     if profile_id:
         profile = get_object_or_404(OutputProfile, id=profile_id, owner=request.user)
     else:
-        profile = (
-            OutputProfile.objects.filter(owner=request.user, target=OutputProfile.Target.JELLYFIN).order_by("name").first()
-        ) or OutputProfile.objects.create(owner=request.user, name="Jellyfin", target=OutputProfile.Target.JELLYFIN)
+        target = str(request.data.get("target") or OutputProfile.Target.JELLYFIN)
+        if target not in OutputProfile.Target.values:
+            raise ValidationError({"target": "Choose jellyfin, emby, kodi, or generic."})
+        profile = profile_for_target(request.user, target)
     projection = Projection.objects.create(
         library=library,
         output_profile=profile,
-        name=" ".join(str(request.data.get("name") or _DEFAULT_FOLDER[layout]).split())[:255],
+        name=" ".join(str(request.data.get("name") or f"{profile.get_target_display()} {_DEFAULT_FOLDER[layout]}").split())[:255],
         destination_path=destination,
         layout=layout,
         link_mode=link_mode,
