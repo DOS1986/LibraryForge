@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from libraries.models import Library
 from metadata.match_views import _run
 from outputs.security import ProjectionSecurityError, validate_projection_destination
-from outputs.services import engine
+from outputs.services import engine, overview
 
 from .models import OutputProfile, Projection, ProjectionPlan, ProjectionRun
 from .serializers import OutputProfileSerializer, ProjectionSerializer
@@ -61,12 +61,18 @@ class ProjectionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def plans(self, request, pk=None):
-        """POST builds a plan (body: optional ``channel``); GET returns the newest."""
+        """POST builds a plan (body: optional ``channel``, or ``cleanup: true`` for
+        a cleanup review); GET returns the newest."""
 
         projection = self.get_object()
         if request.method == "POST":
             channel = str(request.data.get("channel") or "").strip() or None
-            return _run(lambda: engine.plan_detail(engine.build_plan(projection, user=request.user, channel=channel)))
+            cleanup = request.data.get("cleanup") in (True, "true", "1", 1)
+            return _run(
+                lambda: engine.plan_detail(
+                    engine.build_plan(projection, user=request.user, channel=None if cleanup else channel, cleanup=cleanup)
+                )
+            )
         plan = ProjectionPlan.objects.filter(projection=projection).first()
         return Response(engine.plan_detail(plan) if plan else None)
 
@@ -89,7 +95,7 @@ def _owned_plan(request, plan_id) -> ProjectionPlan:
 
 
 def _owned_run(request, run_id) -> ProjectionRun:
-    return get_object_or_404(ProjectionRun, id=run_id, projection__library__owner=request.user)
+    return get_object_or_404(overview.owned_runs(request.user), id=run_id)
 
 
 @api_view(["GET"])
@@ -105,7 +111,11 @@ def plan_actions_view(request, plan_id):
     params = request.query_params
     return _run(
         lambda: engine.action_rows(
-            plan.actions.all(), page=params.get("page"), page_size=params.get("page_size"), action=params.get("action") or None
+            plan.actions.all(),
+            page=params.get("page"),
+            page_size=params.get("page_size"),
+            action=params.get("action") or None,
+            search=params.get("q") or None,
         )
     )
 
@@ -146,6 +156,8 @@ def run_actions_view(request, run_id):
     queryset = run.actions.all()
     if params.get("problems"):
         queryset = queryset.exclude(message="")
+    if params.get("result"):
+        queryset = queryset.filter(result=params["result"])
     size = engine._page(params.get("page_size"), engine.PAGE_SIZE, engine.MAX_PAGE_SIZE)
     page = engine._page(params.get("page"), 1, 1_000_000)
     total = queryset.count()
@@ -176,6 +188,23 @@ def run_actions_view(request, run_id):
 @permission_classes([permissions.IsAuthenticated])
 def run_cancel_view(request, run_id):
     return Response(engine.run_detail(engine.cancel_run(_owned_run(request, run_id))))
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def outputs_overview_view(request):
+    """The Outputs page: every projection's state, output roots, recent runs."""
+
+    return Response(overview.outputs_overview(request.user))
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def output_roots_view(request):
+    """The folders LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS allows, and whether each answers."""
+
+    projections = list(Projection.objects.filter(library__owner=request.user).only("layout", "destination_path"))
+    return Response({"results": overview.output_roots(projections)})
 
 
 @api_view(["GET", "POST"])

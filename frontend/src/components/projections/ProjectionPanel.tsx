@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 
 import { JellyfinRefreshCard } from "@/components/jellyfin/JellyfinPanels"
+import { RunHistory } from "@/components/projections/RunHistory"
 
 import {
   buildProjectionPlan,
@@ -16,7 +17,6 @@ import {
   deleteProjection,
   getProjectionPlanActions,
   getProjectionRun,
-  getProjectionRunJournal,
   getProjectionRuns,
   getLibraryProjections,
   getOutputProfiles,
@@ -25,6 +25,7 @@ import {
 } from "@/lib/api"
 import { formatDateTime } from "@/lib/format"
 import { newOperationId } from "@/lib/ids"
+import { RUN_VARIANT, resultSummary } from "@/lib/projections"
 
 import type {
   OutputProfile,
@@ -35,7 +36,6 @@ import type {
   ProjectionPlanDetail,
   ProjectionRunDetail,
   ProjectionRunsSummary,
-  RunJournalRow,
 } from "@/types"
 
 
@@ -50,29 +50,6 @@ const ACTION_LABELS: Record<PlanActionKind, string> = {
 }
 
 const ACTION_ORDER: PlanActionKind[] = ["create", "update", "relink", "replace", "delete", "artwork", "retain"]
-
-const RESULT_LABELS: Record<string, string> = {
-  created: "added",
-  updated: "updated",
-  relinked: "relinked",
-  deleted: "removed",
-  artwork: "artwork fetched",
-  adopted: "recovered",
-  kept: "left in place",
-  conflict: "left alone",
-  replaced: "replaced (previous files kept as backups)",
-  failed: "failed",
-}
-
-const RUN_VARIANT: Record<string, "success" | "warning" | "destructive" | "default" | "secondary"> = {
-  succeeded: "success",
-  completed_with_errors: "warning",
-  failed: "destructive",
-  interrupted: "warning",
-  cancelled: "secondary",
-  queued: "secondary",
-  running: "default",
-}
 
 const KIND_LABELS: Record<string, string> = {
   movie_nfo: "Movie NFO",
@@ -161,14 +138,6 @@ function suggestedDestination(libraryPath: string, layout: Layout, target: Targe
 }
 
 
-function resultSummary(counts: Record<string, number>) {
-  const parts = Object.entries(counts)
-    .filter(([, value]) => value > 0)
-    .map(([key, value]) => `${value} ${RESULT_LABELS[key] ?? key}`)
-  return parts.length ? parts.join(", ") : "Nothing changed"
-}
-
-
 /**
  * A library's projections: set one up, plan changes, apply them, and see history.
  * With ``inPlace`` it manages the library's own NFOs and artwork instead of an output folder.
@@ -200,10 +169,10 @@ export function ProjectionPanel({
   const [plan, setPlan] = useState<ProjectionPlanDetail | null>(null)
   const [actions, setActions] = useState<Paged<PlanActionRow> | null>(null)
   const [actionFilter, setActionFilter] = useState("")
+  const [actionSearch, setActionSearch] = useState("")
   const [building, setBuilding] = useState(false)
   const [run, setRun] = useState<ProjectionRunDetail | null>(null)
   const [history, setHistory] = useState<ProjectionRunsSummary | null>(null)
-  const [journal, setJournal] = useState<Record<string, RunJournalRow[]>>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const pollRef = useRef<number | null>(null)
@@ -236,7 +205,6 @@ export function ProjectionPanel({
     setActions(null)
     setRun(null)
     setHistory(null)
-    setJournal({})
     if (selectedId) {
       void loadHistory(selectedId).catch(() => undefined)
     }
@@ -317,16 +285,17 @@ export function ProjectionPanel({
     }
   }
 
-  async function build() {
+  async function build(cleanup = false) {
     if (!selected) return
     setBuilding(true)
     setError(null)
     setRun(null)
     try {
-      const result = await buildProjectionPlan(selected.id, channel || undefined)
+      const result = await buildProjectionPlan(selected.id, cleanup ? { cleanup: true } : { channel: channel || undefined })
       setPlan(result)
       setActions(result.actions)
       setActionFilter("")
+      setActionSearch("")
     } catch (err) {
       setError(errorMessage(err, "Unable to build a plan."))
     } finally {
@@ -334,10 +303,10 @@ export function ProjectionPanel({
     }
   }
 
-  async function loadActions(page: number, filter: string) {
+  async function loadActions(page: number, filter: string, search = actionSearch) {
     if (!plan) return
     try {
-      setActions(await getProjectionPlanActions(plan.id, page, filter))
+      setActions(await getProjectionPlanActions(plan.id, page, filter, search))
       setActionFilter(filter)
     } catch (err) {
       setError(errorMessage(err, "Unable to load the planned changes."))
@@ -368,19 +337,6 @@ export function ProjectionPanel({
     }
   }
 
-  async function toggleJournal(runId: string) {
-    if (journal[runId]) {
-      setJournal(current => {
-        const next = { ...current }
-        delete next[runId]
-        return next
-      })
-      return
-    }
-    const rows = await getProjectionRunJournal(runId)
-    setJournal(current => ({ ...current, [runId]: rows.results }))
-  }
-
   const blocking = plan?.findings.filter(finding => finding.severity === "blocking") ?? []
   const warnings = plan?.findings.filter(finding => finding.severity === "warning") ?? []
   const active = run && ["queued", "running"].includes(run.status)
@@ -390,6 +346,7 @@ export function ProjectionPanel({
   const server = selected?.output_target ?? target
   const serverName = serverLabel(server)
   const profileInfo = plan?.overview.profile
+  const cleanup = plan?.scope.cleanup ? plan.overview.cleanup : undefined
   const scopes = layout === "youtube_shows"
     ? (plan?.overview.channels ?? []).map(item => ({ id: item.id, title: item.title }))
     : layout === "tv"
@@ -577,7 +534,19 @@ export function ProjectionPanel({
                   </label>
                 )}
                 <Button disabled={building || Boolean(active)} onClick={() => void build()}>
-                  {building ? "Building plan..." : plan ? "Build a new plan" : "Check for changes"}
+                  {building ? "Building plan..." : plan && !cleanup ? "Build a new plan" : "Check for changes"}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={building || Boolean(active)}
+                  title={
+                    inPlace
+                      ? "Lists LibraryForge's image copies that are no longer selected but were kept, for you to approve removing them."
+                      : "Lists files kept after their source was gone, files that went missing from the folder, and NFOs or images changed outside LibraryForge."
+                  }
+                  onClick={() => void build(true)}
+                >
+                  Review cleanup
                 </Button>
               </div>
 
@@ -628,7 +597,7 @@ export function ProjectionPanel({
                   )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={plan.status === "ready" ? "default" : plan.status === "blocked" ? "destructive" : "secondary"}>
-                      Plan {plan.status}
+                      {cleanup ? "Cleanup review" : "Plan"} {plan.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       Built {formatDateTime(plan.created_at)} · expires {formatDateTime(plan.expires_at)}
@@ -641,6 +610,35 @@ export function ProjectionPanel({
                   {warnings.map(finding => (
                     <p key={finding.code} className="rounded-lg border border-warning/40 bg-warning/10 p-3" role="note">{finding.message}</p>
                   ))}
+
+                  {cleanup && plan.status !== "blocked" && (
+                    <div className="space-y-1 rounded-lg border bg-muted/40 p-3" role="note">
+                      {plan.changes === 0 ? (
+                        <p>Nothing to clean up{cleanup.stale_kept ? " right now" : ""}.</p>
+                      ) : (
+                        <ul className="list-disc space-y-0.5 pl-4">
+                          {cleanup.stale > 0 && (
+                            <li>
+                              {cleanup.stale.toLocaleString()} {inPlace ? "image copy(ies) that are no longer selected" : "file(s) whose source is gone"}{" "}
+                              are removed, each only if it&apos;s still exactly what LibraryForge wrote.
+                            </li>
+                          )}
+                          {cleanup.missing > 0 && (
+                            <li>{cleanup.missing.toLocaleString()} file(s) missing from the folder are written again.</li>
+                          )}
+                          {cleanup.changed > 0 && (
+                            <li>
+                              {cleanup.changed.toLocaleString()} NFO(s) or image(s) changed outside LibraryForge are rewritten. Each
+                              changed file is kept beside it as a .libraryforge-backup file.
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        A regular plan never overwrites a file changed outside LibraryForge; only an approved cleanup does.
+                      </p>
+                    </div>
+                  )}
 
                   {plan.status !== "blocked" && (
                     <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
@@ -662,7 +660,9 @@ export function ProjectionPanel({
                   {plan.status === "ready" && (
                     <div className="flex flex-wrap items-center gap-3">
                       <Button disabled={busy || !plan.changes} onClick={() => void apply()}>
-                        {plan.changes ? `Apply reviewed plan (${plan.changes} change${plan.changes === 1 ? "" : "s"})` : "Everything is in sync"}
+                        {plan.changes
+                          ? `Apply reviewed ${cleanup ? "cleanup" : "plan"} (${plan.changes} change${plan.changes === 1 ? "" : "s"})`
+                          : cleanup ? "Nothing to clean up" : "Everything is in sync"}
                       </Button>
                       <span className="text-xs text-muted-foreground">
                         Only these changes are made; each file is rechecked first. Owned files that changed outside LibraryForge are left alone.
@@ -739,20 +739,40 @@ export function ProjectionPanel({
                     </div>
                   )}
 
-                  {actions && actions.total > 0 && (
+                  {actions && (actions.total > 0 || actionSearch) && (
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-muted-foreground">
-                        Planned changes{actionFilter ? `: ${ACTION_LABELS[actionFilter as PlanActionKind]}` : ""} ({actions.total})
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Planned changes{actionFilter ? `: ${ACTION_LABELS[actionFilter as PlanActionKind]}` : ""} ({actions.total})
+                        </div>
+                        <form
+                          className="flex items-center gap-2"
+                          onSubmit={event => {
+                            event.preventDefault()
+                            void loadActions(1, actionFilter, actionSearch)
+                          }}
+                        >
+                          <Input
+                            aria-label="Search planned changes by path"
+                            className="h-8 w-56"
+                            placeholder="Search by path"
+                            value={actionSearch}
+                            onChange={event => setActionSearch(event.target.value)}
+                          />
+                          <Button size="sm" variant="outline" type="submit">Search</Button>
+                        </form>
                       </div>
-                      <ul className="space-y-1">
+                      <ul className="space-y-1.5">
                         {actions.results.map(row => (
                           <li key={row.ordinal} className="text-xs">
                             <Badge variant="secondary">{ACTION_LABELS[row.action]}</Badge>{" "}
                             <span className="text-muted-foreground">{KIND_LABELS[row.kind] ?? row.kind}</span>{" "}
                             <span className="break-all">{row.path}</span>
+                            {row.reason && <span className="block pl-1 text-muted-foreground">{row.reason}</span>}
                           </li>
                         ))}
                       </ul>
+                      {actions.total === 0 && <p className="text-xs text-muted-foreground">No planned changes match.</p>}
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="outline" disabled={actions.page <= 1} onClick={() => void loadActions(actions.page - 1, actionFilter)}>Previous</Button>
                         <span className="text-xs text-muted-foreground">Page {actions.page} of {Math.max(1, Math.ceil(actions.total / actions.page_size))}</span>
@@ -766,32 +786,9 @@ export function ProjectionPanel({
               {history && history.results.length > 0 && (
                 <details className="rounded-lg border p-3">
                   <summary className="cursor-pointer font-medium">Run history ({history.results.length})</summary>
-                  <ul className="mt-3 space-y-2">
-                    {history.results.map(item => (
-                      <li key={item.id} className="space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={RUN_VARIANT[item.status] ?? "secondary"}>{item.status_label}</Badge>
-                          <span className="text-xs text-muted-foreground">{formatDateTime(item.completed_at ?? item.created_at)}</span>
-                          <span className="text-xs">{resultSummary(item.counts)}</span>
-                          {(item.problems.length > 0 || item.error) && (
-                            <Button size="xs" variant="ghost" onClick={() => void toggleJournal(item.id)}>
-                              {journal[item.id] ? "Hide details" : "Details"}
-                            </Button>
-                          )}
-                        </div>
-                        {item.error && <p className="text-xs text-destructive">{item.error}</p>}
-                        {journal[item.id] && (
-                          <ul className="space-y-1 pl-2">
-                            {journal[item.id].map(row => (
-                              <li key={row.ordinal} className="text-xs">
-                                <span className="font-medium break-all">{row.path}</span>: {row.message || row.result}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-3">
+                    <RunHistory runs={history.results} />
+                  </div>
                 </details>
               )}
 

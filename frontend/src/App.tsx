@@ -44,6 +44,10 @@ import {
 } from "@/pages/JobsPage"
 
 import {
+  OutputsPage,
+} from "@/pages/OutputsPage"
+
+import {
   SettingsPage,
 } from "@/pages/SettingsPage"
 
@@ -274,6 +278,11 @@ function App() {
                 element={<LibrarySettingsPage />}
               />
             </Route>
+
+            <Route
+              path="outputs"
+              element={<OutputsPage />}
+            />
 
             <Route
               path="jobs"

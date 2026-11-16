@@ -33,6 +33,7 @@ import type {
   NfoFile,
   NfoValidation,
   OutputProfile,
+  OutputsOverview,
   Paginated,
   Projection,
   RestartRequestResult,
@@ -1129,18 +1130,19 @@ export async function deleteProjection(projectionId: string) {
 
 
 // Build a stored plan to review. Reads only; changes nothing on disk.
-export async function buildProjectionPlan(projectionId: string, channel?: string) {
+// ``cleanup`` builds a cleanup review: kept files to remove, and owned files to put right.
+export async function buildProjectionPlan(projectionId: string, options: { channel?: string; cleanup?: boolean } = {}) {
   await ensureCsrf()
   return request<ProjectionPlanDetail>(`/api/projections/${projectionId}/plans/`, {
     method: "POST",
-    body: JSON.stringify(channel ? { channel } : {}),
+    body: JSON.stringify(options.cleanup ? { cleanup: true } : options.channel ? { channel: options.channel } : {}),
   })
 }
 
 
-export async function getProjectionPlanActions(planId: string, page: number, action?: string) {
+export async function getProjectionPlanActions(planId: string, page: number, action?: string, search?: string) {
   return request<Paged<PlanActionRow>>(
-    `/api/projection-plans/${planId}/actions/` + queryString({ page, action: action || undefined }),
+    `/api/projection-plans/${planId}/actions/` + queryString({ page, action: action || undefined, q: search?.trim() || undefined }),
   )
 }
 
@@ -1171,10 +1173,16 @@ export async function getProjectionRuns(projectionId: string) {
 }
 
 
-export async function getProjectionRunJournal(runId: string, problemsOnly = true) {
+export async function getProjectionRunJournal(runId: string, problemsOnly = true, page = 1) {
   return request<Paged<RunJournalRow>>(
-    `/api/projection-runs/${runId}/actions/` + queryString({ problems: problemsOnly ? 1 : undefined, page_size: 200 }),
+    `/api/projection-runs/${runId}/actions/` + queryString({ problems: problemsOnly ? 1 : undefined, page, page_size: 100 }),
   )
+}
+
+
+// The Outputs page: every projection's state, the allowed output roots, and recent runs.
+export async function getOutputsOverview() {
+  return request<OutputsOverview>("/api/outputs/")
 }
 
 

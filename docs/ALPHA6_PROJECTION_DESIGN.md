@@ -1,6 +1,6 @@
 # 0.1.0-alpha.6 — Projection and Output Engine (design)
 
-Status: approved 16 November 2026. Phases 1 to 4 implemented (see PROJECTIONS.md).
+Status: approved 16 November 2026. Phases 1 to 5 implemented (see PROJECTIONS.md); Jellyfin live verification is pending.
 
 This design adapts the reconstructed "LibraryForge Projection and Output Engine" document (ChatGPT, 16 November 2026) to how LibraryForge is used today and to an alpha-sized scope. Where this document differs from that one, this one is the plan, and the reason is given.
 
@@ -96,7 +96,7 @@ The planner, run acceptance, and executor enforce these, not just the UI. A libr
 * **Destination checks.** Every destination path is joined only through the validated root, confined after directories are created, and checked for links or junctions that leave the root. Absolute, traversal, reserved-name, trailing-dot, and overlong paths are rejected.
 * **Collisions.** These are checked among desired artifacts, the manifest, and files already on disk, by a comparison key that folds case and Unicode form.
 * **Foreign files.** These are never replaced or adopted by name or content.
-* **Changed owned files.** A changed owned NFO or image is drift: it's reported and left alone until you choose to overwrite it.
+* **Changed owned files.** A changed owned NFO or image is drift: it's reported and left alone until you choose to overwrite it in a cleanup review, which keeps the changed file as a backup.
 * **Before each change.** The executor rechecks the root, the expected-before evidence, and the source identity before each action.
 * **Media replacement.** Media is never written through an existing link. Replacements unlink the owned entry and create a new one.
 * **Write mechanics.** Copies are written to a temporary file in the destination folder, verified by hash, then renamed into place. Generated files are written atomically.
@@ -133,6 +133,8 @@ A library-level workflow on the NFO page, for Sidecar Only and Full Control libr
 | `POST /projection-plans/{id}/runs/` | Apply an approved plan (digest and idempotency key) |
 | `GET /projection-runs/{id}/`, `/actions/`, `POST /cancel/` | Run progress, journal, and cancellation |
 | `POST /libraries/{id}/projections/` with `layout: library_nfo` | Library NFO output: a projection with no output folder, so its plans and runs use the projection routes above |
+| `POST /projections/{id}/plans/` with `cleanup: true` | A cleanup review: kept files to remove, missing owned files to restore, changed owned NFOs and images to overwrite with a backup |
+| `GET /outputs/` | The Outputs page: every projection's state, the output roots, and recent runs |
 
 The alpha.5 `shows-plan` and `shows-sync` routes and the template `preview` and `run` routes are removed together with the frontend change.
 

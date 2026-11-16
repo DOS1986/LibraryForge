@@ -3,6 +3,7 @@ import {
   Clapperboard,
   FileCode2,
   Film,
+  FolderOutput,
   FolderSymlink,
   FolderTree,
   Layers,
@@ -35,6 +36,13 @@ export interface NavItem {
 // Top-level pages, in sidebar order. Libraries sit between the two groups.
 export const MAIN_NAV: NavItem[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard, description: "Libraries at a glance" },
+  {
+    path: "/outputs",
+    label: "Outputs",
+    icon: FolderOutput,
+    description: "Projection folders and NFO output, their plans and run history",
+    keywords: "projections jellyfin emby kodi nfo artwork cleanup runs",
+  },
   { path: "/jobs", label: "Jobs", icon: ListChecks, description: "Library scans and their progress", keywords: "scan worker queue" },
 ]
 
@@ -60,7 +68,7 @@ export const LIBRARY_SECTIONS: NavItem[] = [
   { path: "sources", label: "Sources", icon: Layers, description: "Metadata found in files and sidecars", keywords: "embedded tubearchivist yt-dlp ffprobe filename" },
   { path: "attention", label: "Needs Attention", icon: TriangleAlert, description: "Items to review", keywords: "matches problems" },
   { path: "ratings", label: "Ratings", icon: ShieldCheck, description: "Content ratings for parental controls", keywords: "mpaa pg parental" },
-  { path: "projections", label: "Projections", icon: FolderSymlink, description: "Jellyfin folders built from this library", keywords: "youtube shows hardlinks output" },
+  { path: "projections", label: "Projections", icon: FolderSymlink, description: "Media server folders built from this library", keywords: "youtube shows hardlinks output jellyfin emby kodi" },
   { path: "settings", label: "Settings", icon: Settings2, description: "Management mode and library options" },
 ]
 

@@ -89,6 +89,8 @@ from outputs.views import (
     ProjectionViewSet,
     library_projections_view,
     library_youtube_shows_view,
+    output_roots_view,
+    outputs_overview_view,
     plan_actions_view,
     plan_detail_view,
     plan_run_view,
@@ -366,6 +368,8 @@ urlpatterns = [
     path("api/projection-runs/<uuid:run_id>/actions/", run_actions_view, name="projection-run-actions"),
     path("api/projection-runs/<uuid:run_id>/cancel/", run_cancel_view, name="projection-run-cancel"),
     path("api/libraries/<uuid:library_id>/projections/", library_projections_view, name="library-projections"),
+    path("api/outputs/", outputs_overview_view, name="outputs-overview"),
+    path("api/output-roots/", output_roots_view, name="output-roots"),
     path(
         "api/libraries/<uuid:library_id>/youtube-shows/",
         library_youtube_shows_view,

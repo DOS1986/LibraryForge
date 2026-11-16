@@ -176,11 +176,15 @@ def verify_legacy_files(projection: Projection) -> dict[str, int]:
     return result
 
 
-def _removals_allowed(projection: Projection) -> tuple[bool, str]:
-    """Absence-based removals need a complete, current view of the library."""
+def _removals_allowed(projection: Projection, *, ignore_policy: bool = False) -> tuple[bool, str]:
+    """Absence-based removals need a complete, current view of the library.
+
+    ``ignore_policy`` is for a cleanup review, where you approve removing the
+    files a "keep" policy held on to; the safety checks still apply.
+    """
 
     library = projection.library
-    if projection.stale_policy == Projection.StalePolicy.KEEP:
+    if projection.stale_policy == Projection.StalePolicy.KEEP and not ignore_policy:
         return False, "This projection keeps stale files."
     if ScanJob.objects.filter(library=library, status__in=[ScanJob.Status.QUEUED, ScanJob.Status.DISCOVERING, ScanJob.Status.RUNNING]).exists():
         return False, "A scan of the library is in progress."
@@ -233,7 +237,91 @@ def _desired_json(desired) -> dict[str, Any]:
     }
 
 
-def build_plan(projection: Projection, *, user, channel: str | None = None) -> ProjectionPlan:
+def _cleanup(projection: Projection, planned: dict[str, Any]) -> tuple[list, list[dict[str, str]], dict[str, int]]:
+    """A cleanup review: the kept files to remove, and owned files to put right.
+
+    * Stale files (no longer needed) are removed even under a "keep" policy,
+      because you approve this list; the scan and share checks still apply.
+    * In an output folder, owned files that went missing are written again,
+      and owned NFOs and images changed outside LibraryForge are rewritten
+      with the edited file kept beside them as a backup. Changed videos are
+      only reported: a hardlinked video is the library's own file.
+    """
+
+    allowed, reason = _removals_allowed(projection, ignore_policy=True)
+    desired_files = {item.media_file.id for item in planned["desired"] if item.media_file is not None}
+    summary = {"stale": 0, "stale_kept": 0, "missing": 0, "changed": 0, "changed_videos": 0}
+    findings: list[dict[str, str]] = []
+    actions = []
+    # Exactly the files a regular plan keeps; other removals (a renamed file's
+    # old name) belong with the regular plan that creates the new name.
+    guarded, _ = _guard(projection, planned["actions"], desired_files)
+    for action in guarded:
+        if action.action != Action.RETAIN or action.row is None:
+            continue
+        if allowed:
+            action.action = Action.DELETE
+            action.reason = "No longer needed; removed in this cleanup if it's unchanged"
+            summary["stale"] += 1
+        else:
+            action.action = Action.RETAIN
+            summary["stale_kept"] += 1
+        actions.append(action)
+    if summary["stale_kept"]:
+        findings.append(
+            _finding("STALE_KEPT", WARNING, f"{summary['stale_kept']} kept file(s) can't be removed yet: {reason}")
+        )
+
+    if projection.layout not in IN_PLACE:
+        root = fileops._destination_root(projection)
+        desired = {item.path: item for item in planned["desired"]}
+        # Files from before run history that couldn't be verified are never touched.
+        rows = ProjectionFile.objects.filter(projection=projection).exclude(ownership=ProjectionFile.Ownership.LEGACY_UNVERIFIED)
+        for row in rows.select_related("channel", "media_file"):
+            item = desired.get(row.relative_path)
+            if item is None or item.kind != row.kind:
+                continue  # Stale (above) or replaced by the regular plan.
+            try:
+                path = fileops._target(root, row.relative_path, create_parents=False)
+                exists = path.exists()
+                if exists and fileops._is_ours(path, row):
+                    continue
+            except (fileops._Conflict, OSError):
+                continue
+            if not exists:
+                summary["missing"] += 1
+                kind = Action.RELINK if row.kind == Kind.VIDEO else Action.UPDATE
+                actions.append(fileops.Action(kind, row.kind, row.relative_path, row.channel, item, row, reason="Missing from the folder; written again"))
+            elif row.kind == Kind.VIDEO:
+                summary["changed_videos"] += 1
+            else:
+                summary["changed"] += 1
+                item.extra = {**(item.extra or {}), "overwrite": True}
+                actions.append(
+                    fileops.Action(
+                        Action.UPDATE, row.kind, row.relative_path, row.channel, item, row,
+                        reason="Changed outside LibraryForge; rewritten, and the changed file is kept as a backup",
+                    )
+                )
+        if summary["changed_videos"]:
+            findings.append(
+                _finding(
+                    "CHANGED_VIDEOS",
+                    WARNING,
+                    f"{summary['changed_videos']} video(s) in the folder changed outside LibraryForge. They're left alone; "
+                    "check them in the library itself.",
+                )
+            )
+    actions.sort(key=lambda action: action.sort_key)
+    return actions, findings, summary
+
+
+def build_plan(projection: Projection, *, user, channel: str | None = None, cleanup: bool = False) -> ProjectionPlan:
+    """Plan the changes that bring the output up to date.
+
+    ``cleanup`` builds a cleanup review instead (see ``_cleanup``).
+    """
+
     findings = _policy_findings(projection, user)
     legacy: dict[str, int] = {}
     actions: list = []
@@ -242,11 +330,23 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
         legacy = verify_legacy_files(projection)
         layout = LAYOUTS[projection.layout]
         planned = layout.plan(projection)
-        findings.extend(planned.get("findings") or [])
-        desired_files = {item.media_file.id for item in planned["desired"] if item.media_file is not None}
-        actions, guard_findings = _guard(projection, layout.filter_scope(planned["actions"], channel), desired_files)
-        findings.extend(guard_findings)
-        overview = {**(planned.get("overview") or {}), "profile": profiles.for_target(projection.output_profile.target).describe()}
+        profile = profiles.for_target(projection.output_profile.target).describe()
+        if cleanup:
+            try:
+                actions, cleanup_findings, summary = _cleanup(projection, planned)
+            except (OSError, MatchRequestError) as error:
+                actions, summary = [], {}
+                cleanup_findings = [
+                    _finding("DESTINATION_UNAVAILABLE", BLOCKING, getattr(error, "message", None) or str(error))
+                ]
+            findings.extend(cleanup_findings)
+            overview = {"cleanup": summary, "profile": profile}
+        else:
+            findings.extend(planned.get("findings") or [])
+            desired_files = {item.media_file.id for item in planned["desired"] if item.media_file is not None}
+            actions, guard_findings = _guard(projection, layout.filter_scope(planned["actions"], channel), desired_files)
+            findings.extend(guard_findings)
+            overview = {**(planned.get("overview") or {}), "profile": profile}
     if legacy.get("unverified"):
         findings.append(
             _finding(
@@ -304,7 +404,7 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
             projection_name=projection.name,
             requested_by=user,
             status=status,
-            scope={"channel": channel} if channel else {},
+            scope={"cleanup": True} if cleanup else ({"channel": channel} if channel else {}),
             content_digest=digest,
             manifest_revision=manifest_revision(projection),
             counts=counts,
@@ -315,7 +415,7 @@ def build_plan(projection: Projection, *, user, channel: str | None = None) -> P
         for record in records:
             record.plan = plan
         ProjectionPlanAction.objects.bulk_create(records, batch_size=500)
-        if projection.needs_preview and status == ProjectionPlan.Status.READY:
+        if projection.needs_preview and status == ProjectionPlan.Status.READY and not cleanup:
             Projection.objects.filter(pk=projection.pk).update(needs_preview=False)
     return plan
 
@@ -347,9 +447,13 @@ def _page(value: Any, default: int, maximum: int) -> int:
     return max(1, min(number, maximum))
 
 
-def action_rows(queryset, *, page: Any = None, page_size: Any = None, action: str | None = None) -> dict[str, Any]:
+def action_rows(
+    queryset, *, page: Any = None, page_size: Any = None, action: str | None = None, search: str | None = None
+) -> dict[str, Any]:
     if action:
         queryset = queryset.filter(action=action)
+    if search:
+        queryset = queryset.filter(relative_path__icontains=search.strip()[:200])
     size = _page(page_size, PAGE_SIZE, MAX_PAGE_SIZE)
     number = _page(page, 1, 1_000_000)
     total = queryset.count()
@@ -616,14 +720,18 @@ def execute_run(run: ProjectionRun) -> ProjectionRun:
                     if in_place:
                         result, message = LAYOUTS[projection.layout].apply_record(projection, record, library_root)
                     else:
+                        notes: list[str] = []
                         result = fileops._apply(
                             projection,
                             root,
                             library_root,
                             _rebuild(projection, record),
                             allow_adopt=_adoptable(projection, record.relative_path, run),
+                            overwrite=bool(record.desired.get("overwrite")),
+                            notes=notes,
                         )
                         message = "Changed outside LibraryForge, so it was left in place." if result == "kept" else ""
+                        message = notes[0] if notes else message
                     ProjectionFile.objects.filter(projection=projection, updated_at__gte=started).update(
                         ownership=ProjectionFile.Ownership.OWNED, last_run=run
                     )

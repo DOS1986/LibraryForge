@@ -11,6 +11,46 @@ A projection builds a separate folder from a library, in the layout a media serv
 
 The engine is described in [ALPHA6_PROJECTION_DESIGN.md](ALPHA6_PROJECTION_DESIGN.md).
 
+## The Outputs page
+
+**Outputs** in the sidebar lists everything LibraryForge writes for your media servers, across every library:
+
+* **Each output's state:**
+  * changes waiting for review
+  * a blocked plan, with its reason
+  * a failed or interrupted run
+  * in sync at the last check
+  * a run in progress, which the page follows until it finishes
+
+  It also shows each output's last run and how many files LibraryForge manages. **Open** goes to the library page where the output is checked and applied.
+* **Recent runs** across every output. **Details** shows a run's journal: each file, what happened to it, and why. Runs of a deleted projection stay listed.
+* **Output folders allowed:** the folders `LIBRARYFORGE_ALLOWED_OUTPUT_ROOTS` allows, and how many projection folders are inside each. Each folder's state is one of:
+  * **Reachable**
+  * **Created on first run:** it doesn't exist yet, but the folder above it does.
+  * **Not found**
+  * **Not answering:** each check has a three-second limit, so an offline share can't hold the page up.
+* **Media server profiles**, and adding one.
+
+## Reviewing a plan
+
+A plan's tiles count each kind of change; click one to list only those. **Search by path** narrows the list, and each change says why it's planned. Blocking notes disable **Apply**, and a plan expires after 30 minutes (`LIBRARYFORGE_PROJECTION_PLAN_MINUTES`).
+
+## Cleanup review
+
+A regular plan is careful about what it leaves:
+
+* It doesn't remove a file whose source is gone when the projection keeps stale files, or when removal isn't safe yet.
+* It never overwrites an NFO or image that was changed outside LibraryForge.
+* It doesn't notice a managed file that was deleted from the folder.
+
+**Review cleanup** builds a separate plan for those, to review and apply like any other:
+
+* **Kept files** whose source is gone (or, for NFO output in a library, image copies no longer selected) are removed, each only if it's still exactly what LibraryForge wrote. This includes files a "keep" policy held on to. The library's last scan must have finished, and its folder must be reachable.
+* **Missing files** LibraryForge manages are written or linked again.
+* **Changed NFOs and images** are rewritten with LibraryForge's version. Each changed file is first renamed to `<name>.libraryforge-backup-<time>.<ext>` beside it, and the run's details name the backup.
+* **Changed videos** are only reported. A hardlinked video is the library's own file, so check it there.
+* **Left alone:** files from before run history that couldn't be verified, and files LibraryForge didn't create.
+
 ## Layouts
 
 ### Movies
@@ -116,3 +156,15 @@ The reviewed output for each profile is kept as golden fixtures in `backend/outp
 * `POST /api/libraries/<id>/projections/` with `{"layout": "library_nfo", "target": ...}` sets up NFO and artwork output in the library; no destination is needed.
 * `PATCH /api/projections/<id>/` with `output_profile`, `destination_path`, `link_mode`, or `stale_policy` replaces the projection's open plans.
 * Plans, runs, history, and cancellation use the endpoints described in [JELLYFIN_YOUTUBE_SHOWS.md](JELLYFIN_YOUTUBE_SHOWS.md#api). For movies and TV, `channel` in the plan request limits a plan to one show.
+* `POST /api/projections/<id>/plans/` with `{"cleanup": true}` builds a cleanup review. Its plan has `scope.cleanup` set, and `overview.cleanup` counts:
+  * `stale`: kept files to remove
+  * `stale_kept`: kept files that still can't be removed
+  * `missing`: managed files to write again
+  * `changed`: changed NFOs and images to rewrite
+  * `changed_videos`: changed videos, reported only
+* `GET /api/projection-plans/<id>/actions/?q=<text>` filters planned changes by path, and `GET /api/projection-runs/<id>/actions/?result=<result>` filters a run's journal by result.
+* `GET /api/outputs/` returns the Outputs page in one call: `roots`, `projections` (each with its library, newest plan, and latest and active run), and `recent_runs`.
+* `GET /api/output-roots/` lists the allowed output folders. Each has:
+  * `state`: `ready`, `creatable` (the parent exists, so the first run creates it), `missing`, or `not_answering`
+  * `available`: `true`, `false`, or `null` when it didn't answer in time
+  * the number of projection folders inside it

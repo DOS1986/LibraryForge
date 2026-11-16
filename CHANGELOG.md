@@ -10,7 +10,7 @@ pre-1.0 development.
 ### Added
 
 * Added a projection engine with stored plans and background runs. Checking a projection builds a plan you review: every change, findings, counts, and a 30-minute expiry. Applying it queues a run of exactly that plan in the background worker, with progress, cancellation, and a per-file journal that records each change before the disk is touched.
-* Added run history per projection, with results, problems, and journal details.
+* Added run history per projection, with results, problems, and journal details. Runs of a deleted projection stay in the history of whoever ran them.
 * Added movie and TV projections for Jellyfin:
   * Movies go in `Title (Year)` folders with their primary version, a movie NFO, and their selected artwork.
   * Shows go in `Show (Year)` folders with tvshow.nfo, artwork, and `Season 01` folders. Episodes are named `Show S01E02 - Title` with episode NFOs (rated like their show when unrated) and thumbnails.
@@ -29,6 +29,15 @@ pre-1.0 development.
   * Missing NFOs are created. Existing NFOs get only the fields LibraryForge has a different value for: other tags, comments, and formatting are kept, and NFO-only values are never erased. A run writes an NFO only if the file is still what the plan read.
   * Each selected image is copied into the item's folder under the chosen media server's names. A different image already there is kept as a `.libraryforge-backup-` file. LibraryForge's own copies are refreshed, or removed once deselected, if unchanged.
   * Read Only libraries are refused when planning and when running. A rerun with no changes writes nothing.
+* Added an **Outputs** page listing every projection folder and in-place NFO output across libraries. It shows each one's state (changes to review, blocked, failed, in sync, or running), its last run, and the files it manages. It also has recent runs with per-file details, the allowed output folders and whether each is reachable, and the media server profiles (moved here from the Projections page).
+* Added a **cleanup review** for projections and NFO output. It plans, for your review:
+  * removing kept files whose source is gone, including files a "keep" policy held on to (only after a finished scan, and only if unchanged)
+  * writing managed files that went missing from the folder again
+  * rewriting NFOs and images changed outside LibraryForge, keeping each changed file as a `.libraryforge-backup-` file
+
+  Changed videos are only reported. Regular plans still never overwrite a changed file.
+* Added a path search and a reason for each change to plan reviews, and paged journals with an "only notes and problems" switch to run details.
+* Added `GET /api/outputs/`, `GET /api/output-roots/`, `cleanup` on `POST /api/projections/<id>/plans/`, `q` on plan actions, and `result` on run journals.
 
 ### Changed
 

@@ -26,10 +26,13 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from django.utils import timezone
+
 from catalog.artwork_views import _attached_picture_stream, _ffmpeg_executable
 from catalog.models import Channel
 from media.models import MediaFile
 from metadata.services import secure_nfo
+from metadata.services.provider_artwork import _backup_name
 from metadata.services.provider_match import MatchRequestError
 from outputs.models import Projection, ProjectionFile
 
@@ -61,7 +64,7 @@ ACTION_ARTWORK = "artwork"
 ACTIONS = (ACTION_CREATE, ACTION_UPDATE, ACTION_RELINK, ACTION_REPLACE, ACTION_DELETE, ACTION_ARTWORK)
 
 
-RESULTS = ("created", "updated", "relinked", "deleted", "artwork", "adopted", "kept", "conflict", "failed")
+RESULTS = ("created", "updated", "relinked", "replaced", "deleted", "artwork", "adopted", "kept", "conflict", "failed")
 
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
@@ -413,7 +416,28 @@ def _prune(root: Path, folder: Path) -> None:
         current = current.parent
 
 
-def _apply(projection, root: Path, library_root: Path, action: Action, *, allow_adopt: bool = False) -> str:
+def _keep_backup(path: Path) -> str:
+    """Move a changed file aside under a backup name; returns that name."""
+
+    name = _backup_name(path.parent, path.name, timezone.now().strftime("%Y%m%d%H%M%S"))
+    path.rename(path.parent / name)
+    return name
+
+
+def _apply(
+    projection,
+    root: Path,
+    library_root: Path,
+    action: Action,
+    *,
+    allow_adopt: bool = False,
+    overwrite: bool = False,
+    notes: list[str] | None = None,
+) -> str:
+    """Apply one action. ``overwrite`` (a reviewed cleanup) rewrites an owned
+    NFO or image that changed outside LibraryForge, keeping the changed file
+    as a backup; videos are never overwritten."""
+
     if action.action == ACTION_CREATE:
         return _create(projection, root, library_root, action.desired, allow_adopt=allow_adopt)
     if action.action == ACTION_ARTWORK:
@@ -442,17 +466,26 @@ def _apply(projection, root: Path, library_root: Path, action: Action, *, allow_
         return "relinked"
 
     # Update or replace: only an unchanged file of ours is rewritten.
+    overwritten = False
     if path.exists():
         if not _is_ours(path, row):
-            raise _Conflict("This file was changed outside LibraryForge, so it was left alone.")
-        if action.action == ACTION_UPDATE:
+            if not overwrite or row.kind == Kind.VIDEO:
+                raise _Conflict("This file was changed outside LibraryForge, so it was left alone.")
+            backup = _keep_backup(path)
+            overwritten = True
+            if notes is not None:
+                notes.append(f"Changed outside LibraryForge; that version is kept as {backup}.")
+        elif action.action == ACTION_UPDATE:
             data = _generated_bytes(library_root, action.desired)
             _write_bytes(path, data)
             _record(projection, action.path, action.desired, size=len(data), sha=_sha(data))
             return "updated"
-        path.unlink()
+        else:
+            path.unlink()
     row.delete()
     result = _create(projection, root, library_root, action.desired, allow_adopt=allow_adopt)
+    if overwritten:
+        return "replaced"
     return "updated" if result == "created" else result
 
 

@@ -742,7 +742,7 @@ export interface ProjectionPlanDetail {
   projection_id: string | null
   projection_name: string
   status: "ready" | "blocked" | "applied" | "superseded" | "expired"
-  scope: { channel?: string }
+  scope: { channel?: string; cleanup?: boolean }
   digest: string
   counts: Partial<Record<PlanActionKind, number>>
   total: number
@@ -758,6 +758,7 @@ export interface ProjectionPlanDetail {
     profile?: { target: string; label: string; verified: boolean; notes: string[] }
     nfo_changes?: number
     art_changes?: number
+    cleanup?: { stale: number; stale_kept: number; missing: number; changed: number; changed_videos: number }
   }
   created_at: string
   expires_at: string
@@ -790,6 +791,63 @@ export interface ProjectionRunsSummary {
   managed_files: number
   unverified_files: number
   results: ProjectionRunDetail[]
+}
+
+export interface OutputRoot {
+  path: string
+  /** ready: the folder exists; creatable: its parent does, so the first run creates it. */
+  state: "ready" | "creatable" | "missing" | "not_answering"
+  /** null when the share didn't answer within a few seconds. */
+  available: boolean | null
+  projections: number
+}
+
+export interface OutputPlanSummary {
+  id: string
+  status: ProjectionPlanDetail["status"]
+  cleanup: boolean
+  counts: Partial<Record<PlanActionKind, number>>
+  changes: number
+  blocking: string[]
+  created_at: string
+}
+
+export interface OutputProjectionRow {
+  id: string
+  name: string
+  library_id: string
+  library_name: string
+  library_content_type: string
+  library_path: string
+  layout: Projection["layout"]
+  layout_label: string
+  in_place: boolean
+  target: OutputProfile["target"]
+  target_label: string
+  destination_path: string
+  link_mode_label: string
+  stale_policy: Projection["stale_policy"]
+  enabled: boolean
+  needs_preview: boolean
+  latest_plan: OutputPlanSummary | null
+  latest_run: ProjectionRunDetail | null
+  active_run: ProjectionRunDetail | null
+  managed_files: number
+  unverified_files: number
+}
+
+export interface OutputRunRow extends ProjectionRunDetail {
+  library_id: string | null
+  library_name: string
+  layout: string
+  in_place: boolean
+  cleanup: boolean
+}
+
+export interface OutputsOverview {
+  roots: OutputRoot[]
+  projections: OutputProjectionRow[]
+  recent_runs: OutputRunRow[]
 }
 
 export interface RunJournalRow {
